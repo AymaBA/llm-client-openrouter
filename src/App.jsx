@@ -4,6 +4,7 @@ import { Sidebar } from './components/Sidebar/Sidebar'
 import { ChatWindow } from './components/Chat/ChatWindow'
 import { ApiKeyModal } from './components/Settings/ApiKeyModal'
 import { ProfileModal } from './components/Settings/ProfileModal'
+import { ModelSelectorModal } from './components/ModelSelectorModal'
 import useStore from './store/useStore'
 import { useUrlSync } from './hooks/useUrlSync'
 import { useThemeColor } from './hooks/useThemeColor'
@@ -90,6 +91,8 @@ function App() {
         isOpen={showProfileModal}
         onClose={() => setShowProfileModal(false)}
       />
+
+      <ModelSelectorModal />
     </>
   )
 }

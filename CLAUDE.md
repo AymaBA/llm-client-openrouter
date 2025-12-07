@@ -1,0 +1,84 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+LLM Client is a React-based chat application that interfaces with the OpenRouter API to provide access to various LLM models. It features streaming responses, conversation management, user profiles with personalized system prompts, customizable theming, **image generation**, **reasoning/thinking display**, and a **full-featured model selector**.
+
+## Commands
+
+- `npm run dev` - Start development server (Vite)
+- `npm run build` - Build for production
+- `npm run preview` - Preview production build
+
+## Architecture
+
+### State Management
+All application state is centralized in `src/store/useStore.js` using Zustand with localStorage persistence (key: `llm-client-storage`). The store manages:
+- API key and model selection
+- Conversations (CRUD, active conversation tracking)
+- Streaming state (content, reasoning, images) and abort controller
+- User profile settings (name, language, communication style, accent color)
+- Favorite models list
+- Import/export functionality
+
+### API Integration
+`src/services/openrouter.js` handles all OpenRouter API calls:
+- `fetchModels()` - Get available models with capabilities (architecture, pricing, modalities)
+- `streamChat()` - Async generator for streaming chat completions with support for:
+  - Regular text content
+  - **Reasoning tokens** (`delta.reasoning`, `delta.reasoning_content`, `delta.reasoning_details`)
+  - **Image generation** (`delta.images`, `message.images`, multimodal content arrays)
+  - Automatic `modalities: ["text", "image"]` for image-capable models
+- `generateTitle()` - Auto-generate conversation titles using a lightweight model (gemini-2.5-flash-lite)
+
+### Key Patterns
+
+**URL Sync**: `useUrlSync` hook synchronizes the active conversation with the browser URL (`/conversation/:id`), enabling shareable links and browser navigation.
+
+**Dynamic Theming**: `useThemeColor` hook applies the user's accent color as CSS custom properties (--color-accent, --color-accent-soft, etc.) on the document root.
+
+**System Prompts**: Generated dynamically from user profile settings in `getSystemPrompt()` to personalize AI responses. **Disabled for image generation models** to avoid confusion.
+
+**Model Capabilities Detection**: Uses `model.architecture.output_modalities` to detect image generation support and automatically configure API requests.
+
+### Component Structure
+- `Layout.jsx` - Responsive sidebar layout with mobile support
+- `Chat/` - ChatWindow (message display + streaming), ChatMessage (markdown + reasoning + images), ChatInput
+- `Sidebar/` - Conversation list, ModelSelector (opens modal)
+- `Settings/` - ApiKeyModal, ProfileModal
+- `ModelSelectorModal.jsx` - Full-screen model browser with search, filters, favorites
+
+### Features
+
+#### Reasoning Display
+- Collapsible "Raisonnement" section with purple Brain icon
+- Shows reasoning tokens from models like DeepSeek R1, Claude with thinking, Gemini thinking variants
+- Displays "(en cours...)" indicator during streaming
+
+#### Image Generation
+- Automatic detection of image-capable models via `architecture.output_modalities`
+- Supports multiple response formats (base64, data URLs, multimodal arrays)
+- Image grid display with hover overlay
+- Modal viewer with zoom and download functionality
+- Deduplication to prevent duplicate images
+
+#### Model Selector Modal
+- Full-screen modal with search bar
+- Filter buttons: All, Favorites, Free, Image-capable, Reasoning
+- Sort by: Name, Price, Context length
+- Model cards showing:
+  - Provider color accent (OpenAI green, Anthropic beige, Google blue, etc.)
+  - Favorite star toggle (persisted)
+  - Capability badges (Image, Reasoning, Free)
+  - Pricing per million tokens
+  - Context window size
+- Keyboard support (Escape to close)
+
+### Styling
+Uses Tailwind CSS with CSS custom properties for theming. Theme variables are defined in `src/index.css` and dynamically modified by the accent color hook.
+
+## Deployment
+
+Deployed on Netlify. The `netlify.toml` configures SPA routing (redirects all paths to index.html).

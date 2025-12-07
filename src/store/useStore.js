@@ -3,6 +3,31 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 import { v4 as uuidv4 } from 'uuid'
 import { fetchModels, streamChat, generateTitle } from '../services/openrouter'
 
+// Throttled storage to prevent excessive localStorage writes during streaming
+const createThrottledStorage = () => {
+  let timeout = null
+  let pendingValue = null
+
+  return {
+    getItem: (name) => {
+      const value = localStorage.getItem(name)
+      return value ? JSON.parse(value) : null
+    },
+    setItem: (name, value) => {
+      pendingValue = value
+      if (timeout) clearTimeout(timeout)
+      timeout = setTimeout(() => {
+        localStorage.setItem(name, JSON.stringify(pendingValue))
+        timeout = null
+      }, 1000) // Throttle to max 1 write per second
+    },
+    removeItem: (name) => {
+      if (timeout) clearTimeout(timeout)
+      localStorage.removeItem(name)
+    },
+  }
+}
+
 // Migrate old localStorage data to new Zustand store
 const migrateOldData = () => {
   const oldApiKey = localStorage.getItem('openrouter_api_key')
@@ -56,6 +81,17 @@ const useStore = create(
         customInstructions: '',
         accentColor: '#fbbf24', // Default amber
       },
+
+      // Favorite models
+      favoriteModels: [],
+      showModelSelector: false,
+
+      setShowModelSelector: (show) => set({ showModelSelector: show }),
+      toggleFavoriteModel: (modelId) => set((state) => ({
+        favoriteModels: state.favoriteModels.includes(modelId)
+          ? state.favoriteModels.filter((id) => id !== modelId)
+          : [...state.favoriteModels, modelId]
+      })),
 
       setApiKey: (apiKey) => set({ apiKey, error: null }),
       setSelectedModel: (selectedModel) => {
@@ -174,7 +210,20 @@ const useStore = create(
             if (c.id !== conversationId) return c
             return {
               ...c,
-              messages: [...c.messages, { role, content }],
+              messages: [...c.messages, { id: uuidv4(), role, content }],
+              updatedAt: new Date().toISOString(),
+            }
+          }),
+        }))
+      },
+
+      addMessageWithMeta: (conversationId, role, content, meta = {}) => {
+        set((state) => ({
+          conversations: state.conversations.map((c) => {
+            if (c.id !== conversationId) return c
+            return {
+              ...c,
+              messages: [...c.messages, { id: uuidv4(), role, content, ...meta }],
               updatedAt: new Date().toISOString(),
             }
           }),
@@ -211,6 +260,8 @@ const useStore = create(
       // ============ CHAT / STREAMING ============
       isStreaming: false,
       streamingContent: '',
+      streamingReasoning: '',
+      streamingImages: [],
       error: null,
       abortController: null,
 
@@ -219,7 +270,7 @@ const useStore = create(
 
       sendMessage: async (content) => {
         const state = get()
-        const { activeConversationId, apiKey, getSystemPrompt } = state
+        const { activeConversationId, apiKey, getSystemPrompt, models } = state
         const activeConversation = state.conversations.find(
           (c) => c.id === activeConversationId
         )
@@ -229,15 +280,21 @@ const useStore = create(
         const modelToUse = activeConversation.model
         const isFirstMessage = activeConversation.messages.length === 0
 
-        set({ error: null, streamingContent: '' })
+        // Check model capabilities from architecture
+        const modelInfo = models.find((m) => m.id === modelToUse)
+        const outputModalities = modelInfo?.architecture?.output_modalities || []
+
+        set({ error: null, streamingContent: '', streamingReasoning: '', streamingImages: [] })
 
         // Add user message
         get().addMessage(activeConversationId, 'user', content)
 
         // Build messages array with system prompt
-        const systemPrompt = getSystemPrompt()
+        // Skip system prompt for image generation models (it can confuse them)
+        const supportsImageOutput = outputModalities.includes('image')
+        const systemPrompt = supportsImageOutput ? '' : getSystemPrompt()
         const messages = [
-          // Add system prompt if profile is configured
+          // Add system prompt if profile is configured (not for image models)
           ...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []),
           ...activeConversation.messages,
           { role: 'user', content },
@@ -247,21 +304,44 @@ const useStore = create(
         set({ isStreaming: true, abortController })
 
         let fullResponse = ''
+        let fullReasoning = ''
+        let allImages = []
 
         try {
           for await (const chunk of streamChat(
             apiKey,
             modelToUse,
             messages,
-            abortController.signal
+            abortController.signal,
+            { outputModalities }
           )) {
-            fullResponse += chunk
-            set({ streamingContent: fullResponse })
+            if (chunk.content) {
+              fullResponse += chunk.content
+            }
+            if (chunk.reasoning) {
+              fullReasoning += chunk.reasoning
+            }
+            if (chunk.images) {
+              // Deduplicate images by URL
+              for (const img of chunk.images) {
+                if (!allImages.some(existing => existing.url === img.url)) {
+                  allImages.push(img)
+                }
+              }
+            }
+            set({
+              streamingContent: fullResponse,
+              streamingReasoning: fullReasoning,
+              streamingImages: allImages,
+            })
           }
 
-          // Add assistant message
-          get().addMessage(activeConversationId, 'assistant', fullResponse)
-          set({ streamingContent: '', isStreaming: false, abortController: null })
+          // Add assistant message with reasoning and images
+          get().addMessageWithMeta(activeConversationId, 'assistant', fullResponse, {
+            reasoning: fullReasoning || undefined,
+            images: allImages.length > 0 ? allImages : undefined,
+          })
+          set({ streamingContent: '', streamingReasoning: '', streamingImages: [], isStreaming: false, abortController: null })
 
           // Generate title after first exchange
           if (isFirstMessage) {
@@ -278,7 +358,7 @@ const useStore = create(
           if (err.name !== 'AbortError') {
             set({ error: err.message })
           }
-          set({ streamingContent: '', isStreaming: false, abortController: null })
+          set({ streamingContent: '', streamingReasoning: '', streamingImages: [], isStreaming: false, abortController: null })
         }
       },
 
@@ -350,13 +430,14 @@ const useStore = create(
     }),
     {
       name: 'llm-client-storage',
-      storage: createJSONStorage(() => localStorage),
+      storage: createThrottledStorage(),
       partialize: (state) => ({
         apiKey: state.apiKey,
         selectedModel: state.selectedModel,
         conversations: state.conversations,
         activeConversationId: state.activeConversationId,
         userProfile: state.userProfile,
+        favoriteModels: state.favoriteModels,
       }),
     }
   )

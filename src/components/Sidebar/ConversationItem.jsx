@@ -1,8 +1,8 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, memo } from 'react'
 import { createPortal } from 'react-dom'
 import { MessageSquare, Trash2, Edit2, Download, MoreHorizontal } from 'lucide-react'
 
-export function ConversationItem({
+export const ConversationItem = memo(function ConversationItem({
   conversation,
   isActive,
   onSelect,
@@ -249,4 +249,4 @@ export function ConversationItem({
       </div>
     </div>
   )
-}
+})

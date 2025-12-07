@@ -1,65 +1,35 @@
-import { useState } from 'react'
+import { useState, memo, useMemo, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
-import { User, Sparkles, Copy, Check } from 'lucide-react'
+import { User, Sparkles, Copy, Check, Brain, ChevronDown, ChevronRight, Image as ImageIcon, Download, X, ZoomIn } from 'lucide-react'
 
-export function ChatMessage({ message }) {
+export const ChatMessage = memo(function ChatMessage({ message }) {
   const [copiedCode, setCopiedCode] = useState(null)
+  const [reasoningExpanded, setReasoningExpanded] = useState(false)
+  const [lightboxImage, setLightboxImage] = useState(null)
   const isUser = message.role === 'user'
+  const hasReasoning = message.reasoning && message.reasoning.length > 0
+  const hasImages = message.images && message.images.length > 0
 
-  const copyToClipboard = async (code, index) => {
+  const downloadImage = useCallback((url, index) => {
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `image-${index + 1}.png`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }, [])
+
+  const copyToClipboard = useCallback(async (code, index) => {
     await navigator.clipboard.writeText(code)
     setCopiedCode(index)
     setTimeout(() => setCopiedCode(null), 2000)
-  }
+  }, [])
 
-  return (
-    <div
-      className="py-6 animate-fade-in"
-      style={{
-        background: isUser ? 'transparent' : 'var(--color-bg-secondary)'
-      }}
-    >
-      <div className="max-w-3xl mx-auto px-4 sm:px-6">
-        <div className="flex gap-4">
-          {/* Avatar */}
-          <div
-            className="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center"
-            style={{
-              background: isUser
-                ? 'linear-gradient(135deg, var(--color-user) 0%, #3b82f6 100%)'
-                : 'linear-gradient(135deg, var(--color-assistant) 0%, #10b981 100%)',
-              boxShadow: isUser
-                ? '0 0 20px rgba(96, 165, 250, 0.3)'
-                : '0 0 20px rgba(52, 211, 153, 0.3)'
-            }}
-          >
-            {isUser ? (
-              <User size={18} className="text-white" />
-            ) : (
-              <Sparkles size={18} className="text-white" />
-            )}
-          </div>
-
-          {/* Content */}
-          <div className="flex-1 min-w-0 pt-1">
-            {/* Role label */}
-            <p
-              className="text-sm font-medium mb-2"
-              style={{
-                color: isUser ? 'var(--color-user)' : 'var(--color-assistant)'
-              }}
-            >
-              {isUser ? 'Vous' : 'Assistant'}
-            </p>
-
-            {/* Message content */}
-            <div className="prose-custom">
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                components={{
+  // Memoize markdown components to prevent recreation on every render
+  const markdownComponents = useMemo(() => ({
                   code({ node, inline, className, children, ...props }) {
                     const match = /language-(\w+)/.exec(className || '')
                     const codeString = String(children).replace(/\n$/, '')
@@ -370,37 +340,293 @@ export function ChatMessage({ message }) {
                       </tr>
                     )
                   },
-                  th({ children }) {
-                    return (
-                      <th
-                        className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider"
-                        style={{
-                          color: 'var(--color-text-secondary)',
-                          borderBottom: '1px solid var(--color-border)'
-                        }}
-                      >
-                        {children}
-                      </th>
-                    )
-                  },
-                  td({ children }) {
-                    return (
-                      <td
-                        className="px-4 py-3 text-sm"
-                        style={{ color: 'var(--color-text-primary)' }}
-                      >
-                        {children}
-                      </td>
-                    )
-                  },
+    th({ children }) {
+      return (
+        <th
+          className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider"
+          style={{
+            color: 'var(--color-text-secondary)',
+            borderBottom: '1px solid var(--color-border)'
+          }}
+        >
+          {children}
+        </th>
+      )
+    },
+    td({ children }) {
+      return (
+        <td
+          className="px-4 py-3 text-sm"
+          style={{ color: 'var(--color-text-primary)' }}
+        >
+          {children}
+        </td>
+      )
+    },
+  }), [copiedCode, copyToClipboard])
+
+  return (
+    <div
+      className="py-6 animate-fade-in"
+      style={{
+        background: isUser ? 'transparent' : 'var(--color-bg-secondary)'
+      }}
+    >
+      <div className="max-w-3xl mx-auto px-4 sm:px-6">
+        <div className="flex gap-4">
+          {/* Avatar */}
+          <div
+            className="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center"
+            style={{
+              background: isUser
+                ? 'linear-gradient(135deg, var(--color-user) 0%, #3b82f6 100%)'
+                : 'linear-gradient(135deg, var(--color-assistant) 0%, #10b981 100%)',
+              boxShadow: isUser
+                ? '0 0 20px rgba(96, 165, 250, 0.3)'
+                : '0 0 20px rgba(52, 211, 153, 0.3)'
+            }}
+          >
+            {isUser ? (
+              <User size={18} className="text-white" />
+            ) : (
+              <Sparkles size={18} className="text-white" />
+            )}
+          </div>
+
+          {/* Content */}
+          <div className="flex-1 min-w-0 pt-1">
+            {/* Role label */}
+            <p
+              className="text-sm font-medium mb-2"
+              style={{
+                color: isUser ? 'var(--color-user)' : 'var(--color-assistant)'
+              }}
+            >
+              {isUser ? 'Vous' : 'Assistant'}
+            </p>
+
+            {/* Reasoning section (collapsible) */}
+            {hasReasoning && (
+              <div
+                className="mb-4 rounded-xl overflow-hidden"
+                style={{
+                  background: 'var(--color-bg-elevated)',
+                  border: '1px solid var(--color-border)',
                 }}
+              >
+                <button
+                  onClick={() => setReasoningExpanded(!reasoningExpanded)}
+                  className="w-full flex items-center gap-3 px-4 py-3 transition-colors duration-200"
+                  style={{
+                    background: reasoningExpanded ? 'var(--color-bg-hover)' : 'transparent',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!reasoningExpanded) e.currentTarget.style.background = 'var(--color-bg-hover)'
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!reasoningExpanded) e.currentTarget.style.background = 'transparent'
+                  }}
+                >
+                  <div
+                    className="w-8 h-8 rounded-lg flex items-center justify-center"
+                    style={{
+                      background: 'linear-gradient(135deg, #8b5cf6 0%, #a78bfa 100%)',
+                      boxShadow: '0 0 12px rgba(139, 92, 246, 0.3)',
+                    }}
+                  >
+                    <Brain size={16} className="text-white" />
+                  </div>
+                  <span
+                    className="flex-1 text-left font-medium text-sm"
+                    style={{ color: 'var(--color-text-primary)' }}
+                  >
+                    Raisonnement {message.isStreaming && '(en cours...)'}
+                  </span>
+                  {reasoningExpanded ? (
+                    <ChevronDown size={18} style={{ color: 'var(--color-text-muted)' }} />
+                  ) : (
+                    <ChevronRight size={18} style={{ color: 'var(--color-text-muted)' }} />
+                  )}
+                </button>
+
+                {reasoningExpanded && (
+                  <div
+                    className="px-4 pb-4 pt-2 border-t"
+                    style={{
+                      borderColor: 'var(--color-border)',
+                      background: 'var(--color-bg-tertiary)',
+                    }}
+                  >
+                    <div
+                      className="text-sm leading-relaxed whitespace-pre-wrap font-mono"
+                      style={{ color: 'var(--color-text-secondary)' }}
+                    >
+                      {message.reasoning}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Message content */}
+            <div className="prose-custom">
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={markdownComponents}
               >
                 {message.content}
               </ReactMarkdown>
             </div>
+
+            {/* Generated images */}
+            {hasImages && (
+              <div className="mt-4 space-y-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <ImageIcon size={16} style={{ color: 'var(--color-text-muted)' }} />
+                  <span
+                    className="text-sm font-medium"
+                    style={{ color: 'var(--color-text-secondary)' }}
+                  >
+                    Images générées ({message.images.length})
+                  </span>
+                </div>
+                <div className="grid gap-4" style={{ gridTemplateColumns: message.images.length === 1 ? '1fr' : 'repeat(auto-fill, minmax(300px, 1fr))' }}>
+                  {message.images.map((img, idx) => (
+                    <div
+                      key={idx}
+                      className="relative group rounded-xl overflow-hidden cursor-pointer"
+                      style={{
+                        border: '1px solid var(--color-border)',
+                        background: 'var(--color-bg-elevated)',
+                      }}
+                      onClick={() => setLightboxImage({ url: img.url, index: idx })}
+                    >
+                      <img
+                        src={img.url}
+                        alt={`Image générée ${idx + 1}`}
+                        className="w-full h-auto"
+                        style={{ display: 'block' }}
+                      />
+                      <div
+                        className="absolute inset-0 flex items-center justify-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+                        style={{ background: 'rgba(0, 0, 0, 0.6)' }}
+                      >
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setLightboxImage({ url: img.url, index: idx })
+                          }}
+                          className="flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-200 hover:scale-105"
+                          style={{
+                            background: 'white',
+                            color: 'black',
+                          }}
+                        >
+                          <ZoomIn size={16} />
+                          <span className="text-sm font-medium">Agrandir</span>
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            downloadImage(img.url, idx)
+                          }}
+                          className="flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-200 hover:scale-105"
+                          style={{
+                            background: 'var(--color-accent)',
+                            color: 'black',
+                          }}
+                        >
+                          <Download size={16} />
+                          <span className="text-sm font-medium">Télécharger</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Image modal */}
+            {lightboxImage && (
+              <div
+                className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-8"
+                style={{ background: 'rgba(0, 0, 0, 0.8)', backdropFilter: 'blur(8px)' }}
+                onClick={() => setLightboxImage(null)}
+              >
+                {/* Modal container */}
+                <div
+                  className="relative w-full max-w-5xl max-h-[90vh] rounded-2xl overflow-hidden flex flex-col"
+                  style={{
+                    background: 'var(--color-bg-primary)',
+                    border: '1px solid var(--color-border)',
+                    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {/* Modal header */}
+                  <div
+                    className="flex items-center justify-between px-4 py-3 flex-shrink-0"
+                    style={{
+                      background: 'var(--color-bg-secondary)',
+                      borderBottom: '1px solid var(--color-border)',
+                    }}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-8 h-8 rounded-lg flex items-center justify-center"
+                        style={{ background: 'var(--color-accent-soft)' }}
+                      >
+                        <ImageIcon size={16} style={{ color: 'var(--color-accent)' }} />
+                      </div>
+                      <span
+                        className="font-medium"
+                        style={{ color: 'var(--color-text-primary)' }}
+                      >
+                        Image générée
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => downloadImage(lightboxImage.url, lightboxImage.index)}
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all duration-200 hover:scale-105"
+                        style={{
+                          background: 'var(--color-accent)',
+                          color: 'black',
+                        }}
+                      >
+                        <Download size={16} />
+                        <span className="text-sm font-medium">Télécharger</span>
+                      </button>
+                      <button
+                        onClick={() => setLightboxImage(null)}
+                        className="p-2 rounded-lg transition-colors duration-200"
+                        style={{ color: 'var(--color-text-muted)' }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = 'var(--color-bg-hover)'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                      >
+                        <X size={20} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Modal body - Image */}
+                  <div
+                    className="flex-1 overflow-auto p-4 flex items-center justify-center"
+                    style={{ background: 'var(--color-bg-tertiary)' }}
+                  >
+                    <img
+                      src={lightboxImage.url}
+                      alt="Image agrandie"
+                      className="max-w-full max-h-full object-contain rounded-lg"
+                      style={{ maxHeight: 'calc(90vh - 80px)' }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
     </div>
   )
-}
+})

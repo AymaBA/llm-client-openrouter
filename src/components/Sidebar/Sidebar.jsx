@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import {
   Plus,
   Download,
@@ -16,20 +16,19 @@ import useStore from '../../store/useStore'
 export function Sidebar() {
   const [searchTerm, setSearchTerm] = useState('')
 
-  // Get state from store
+  // Get state from store - individual selectors are stable
   const conversations = useStore((state) => state.conversations)
   const activeConversationId = useStore((state) => state.activeConversationId)
-  const setActiveConversationId = useStore((state) => state.setActiveConversationId)
   const selectedModel = useStore((state) => state.selectedModel)
-  const setSelectedModel = useStore((state) => state.setSelectedModel)
   const models = useStore((state) => state.models)
   const modelsLoading = useStore((state) => state.modelsLoading)
   const apiKey = useStore((state) => state.apiKey)
-  const setShowApiKeyModal = useStore((state) => state.setShowApiKeyModal)
-  const setShowProfileModal = useStore((state) => state.setShowProfileModal)
   const userProfile = useStore((state) => state.userProfile)
 
   // Get actions from store
+  const setActiveConversationId = useStore((state) => state.setActiveConversationId)
+  const setShowApiKeyModal = useStore((state) => state.setShowApiKeyModal)
+  const setShowProfileModal = useStore((state) => state.setShowProfileModal)
   const createConversation = useStore((state) => state.createConversation)
   const deleteConversation = useStore((state) => state.deleteConversation)
   const updateConversation = useStore((state) => state.updateConversation)
@@ -38,17 +37,22 @@ export function Sidebar() {
   const importConversations = useStore((state) => state.importConversations)
   const setError = useStore((state) => state.setError)
 
-  const filteredConversations = conversations.filter((c) =>
-    c.title.toLowerCase().includes(searchTerm.toLowerCase())
+  // Memoize filtered conversations
+  const filteredConversations = useMemo(
+    () =>
+      conversations.filter((c) =>
+        c.title.toLowerCase().includes(searchTerm.toLowerCase())
+      ),
+    [conversations, searchTerm]
   )
 
-  const handleNewConversation = () => {
+  const handleNewConversation = useCallback(() => {
     if (selectedModel) {
       createConversation(selectedModel)
     }
-  }
+  }, [selectedModel, createConversation])
 
-  const handleImport = async () => {
+  const handleImport = useCallback(async () => {
     const input = document.createElement('input')
     input.type = 'file'
     input.accept = '.json'
@@ -64,7 +68,7 @@ export function Sidebar() {
       }
     }
     input.click()
-  }
+  }, [importConversations, setError])
 
   return (
     <div
@@ -114,7 +118,6 @@ export function Sidebar() {
         <ModelSelector
           models={models}
           selectedModel={selectedModel}
-          onSelectModel={setSelectedModel}
           loading={modelsLoading}
           disabled={!apiKey}
         />
@@ -183,21 +186,16 @@ export function Sidebar() {
           </div>
         ) : (
           <div className="space-y-1">
-            {filteredConversations.map((conversation, index) => (
-              <div
+            {filteredConversations.map((conversation) => (
+              <ConversationItem
                 key={conversation.id}
-                className="animate-fade-in"
-                style={{ animationDelay: `${index * 30}ms` }}
-              >
-                <ConversationItem
-                  conversation={conversation}
-                  isActive={conversation.id === activeConversationId}
-                  onSelect={() => setActiveConversationId(conversation.id)}
-                  onDelete={() => deleteConversation(conversation.id)}
-                  onRename={(title) => updateConversation(conversation.id, { title })}
-                  onExport={() => exportConversationAsMarkdown(conversation.id)}
-                />
-              </div>
+                conversation={conversation}
+                isActive={conversation.id === activeConversationId}
+                onSelect={() => setActiveConversationId(conversation.id)}
+                onDelete={() => deleteConversation(conversation.id)}
+                onRename={(title) => updateConversation(conversation.id, { title })}
+                onExport={() => exportConversationAsMarkdown(conversation.id)}
+              />
             ))}
           </div>
         )}

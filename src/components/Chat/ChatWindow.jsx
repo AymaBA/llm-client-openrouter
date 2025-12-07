@@ -1,11 +1,11 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useMemo, useCallback } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { MessageSquare, Zap } from 'lucide-react'
 import { ChatMessage } from './ChatMessage'
 import { ChatInput } from './ChatInput'
 import useStore from '../../store/useStore'
 
 export function ChatWindow() {
-  const messagesEndRef = useRef(null)
   const containerRef = useRef(null)
 
   // Get state from store
@@ -13,19 +13,58 @@ export function ChatWindow() {
   const activeConversationId = useStore((state) => state.activeConversationId)
   const isStreaming = useStore((state) => state.isStreaming)
   const streamingContent = useStore((state) => state.streamingContent)
+  const streamingReasoning = useStore((state) => state.streamingReasoning)
+  const streamingImages = useStore((state) => state.streamingImages)
   const apiKey = useStore((state) => state.apiKey)
   const selectedModel = useStore((state) => state.selectedModel)
 
   // Get the active conversation
-  const conversation = conversations.find((c) => c.id === activeConversationId)
+  const conversation = useMemo(
+    () => conversations.find((c) => c.id === activeConversationId),
+    [conversations, activeConversationId]
+  )
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }
+  // Memoize display messages with fallback IDs for old messages
+  const displayMessages = useMemo(() => {
+    if (!conversation) return []
+    const messages = (conversation.messages || []).map((msg, index) => ({
+      ...msg,
+      // Ensure every message has an ID (for old messages without IDs)
+      id: msg.id || `msg-${index}-${msg.role}`,
+    }))
+    if (isStreaming && (streamingContent || streamingReasoning)) {
+      messages.push({
+        id: 'streaming-message',
+        role: 'assistant',
+        content: streamingContent,
+        reasoning: streamingReasoning || undefined,
+        images: streamingImages.length > 0 ? streamingImages : undefined,
+        isStreaming: true,
+      })
+    }
+    return messages
+  }, [conversation, isStreaming, streamingContent, streamingReasoning, streamingImages])
+
+  // Virtual list setup
+  const virtualizer = useVirtualizer({
+    count: displayMessages.length,
+    getScrollElement: () => containerRef.current,
+    estimateSize: () => 150, // Estimated message height
+    overscan: 3, // Render 3 extra items above/below viewport
+  })
+
+  // Scroll to bottom when new messages arrive or during streaming
+  const scrollToBottom = useCallback(() => {
+    if (containerRef.current) {
+      containerRef.current.scrollTop = containerRef.current.scrollHeight
+    }
+  }, [])
 
   useEffect(() => {
-    scrollToBottom()
-  }, [conversation?.messages, streamingContent])
+    // Small delay to allow virtual list to update
+    const timer = setTimeout(scrollToBottom, 50)
+    return () => clearTimeout(timer)
+  }, [displayMessages.length, streamingContent, scrollToBottom])
 
   if (!conversation) {
     return (
@@ -67,17 +106,6 @@ export function ChatWindow() {
         </div>
       </div>
     )
-  }
-
-  const messages = conversation.messages || []
-  const displayMessages = [...messages]
-
-  // Add streaming message if currently streaming
-  if (isStreaming && streamingContent) {
-    displayMessages.push({
-      role: 'assistant',
-      content: streamingContent,
-    })
   }
 
   return (
@@ -134,16 +162,46 @@ export function ChatWindow() {
             </div>
           </div>
         ) : (
-          <div className="py-4">
-            {displayMessages.map((msg, index) => (
-              <ChatMessage key={index} message={msg} />
-            ))}
+          <div
+            className="py-4"
+            style={{
+              height: `${virtualizer.getTotalSize()}px`,
+              width: '100%',
+              position: 'relative',
+            }}
+          >
+            {virtualizer.getVirtualItems().map((virtualRow) => {
+              const msg = displayMessages[virtualRow.index]
+              return (
+                <div
+                  key={msg.id}
+                  data-index={virtualRow.index}
+                  ref={virtualizer.measureElement}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    transform: `translateY(${virtualRow.start}px)`,
+                  }}
+                >
+                  <ChatMessage message={msg} />
+                </div>
+              )
+            })}
 
-            {/* Loading indicator */}
-            {isStreaming && !streamingContent && (
+            {/* Loading indicator - only show when nothing is being streamed yet */}
+            {isStreaming && !streamingContent && !streamingReasoning && (
               <div
                 className="py-6"
-                style={{ background: 'var(--color-assistant-soft)' }}
+                style={{
+                  background: 'var(--color-assistant-soft)',
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  transform: `translateY(${virtualizer.getTotalSize()}px)`,
+                }}
               >
                 <div className="max-w-3xl mx-auto px-4 sm:px-6">
                   <div className="flex gap-4">
@@ -184,7 +242,6 @@ export function ChatWindow() {
                 </div>
               </div>
             )}
-            <div ref={messagesEndRef} />
           </div>
         )}
       </div>
