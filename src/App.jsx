@@ -5,6 +5,7 @@ import { ChatWindow } from './components/Chat/ChatWindow'
 import { ApiKeyModal } from './components/Settings/ApiKeyModal'
 import { ProfileModal } from './components/Settings/ProfileModal'
 import { ModelSelectorModal } from './components/ModelSelectorModal'
+import { ProjectModal, ProjectSelectorModal } from './components/Projects'
 import useStore from './store/useStore'
 import { useUrlSync } from './hooks/useUrlSync'
 import { useThemeColor } from './hooks/useThemeColor'
@@ -16,6 +17,10 @@ function App() {
   const setShowApiKeyModal = useStore((state) => state.setShowApiKeyModal)
   const showProfileModal = useStore((state) => state.showProfileModal)
   const setShowProfileModal = useStore((state) => state.setShowProfileModal)
+  const showProjectModal = useStore((state) => state.showProjectModal)
+  const setShowProjectModal = useStore((state) => state.setShowProjectModal)
+  const showProjectSelectorModal = useStore((state) => state.showProjectSelectorModal)
+  const setShowProjectSelectorModal = useStore((state) => state.setShowProjectSelectorModal)
   const setApiKey = useStore((state) => state.setApiKey)
   const error = useStore((state) => state.error)
   const clearError = useStore((state) => state.clearError)
@@ -93,6 +98,16 @@ function App() {
       />
 
       <ModelSelectorModal />
+
+      <ProjectModal
+        isOpen={showProjectModal}
+        onClose={() => setShowProjectModal(false)}
+      />
+
+      <ProjectSelectorModal
+        isOpen={showProjectSelectorModal}
+        onClose={() => setShowProjectSelectorModal(false)}
+      />
     </>
   )
 }

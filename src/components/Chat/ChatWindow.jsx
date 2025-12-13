@@ -2,6 +2,7 @@ import { useEffect, useRef, useMemo, useCallback } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { MessageSquare, Zap } from 'lucide-react'
 import { ChatMessage } from './ChatMessage'
+import { StreamingMessage } from './StreamingMessage'
 import { ChatInput } from './ChatInput'
 import useStore from '../../store/useStore'
 
@@ -25,25 +26,18 @@ export function ChatWindow() {
   )
 
   // Memoize display messages with fallback IDs for old messages
+  // Don't include streaming message here - it's rendered separately for performance
   const displayMessages = useMemo(() => {
     if (!conversation) return []
-    const messages = (conversation.messages || []).map((msg, index) => ({
+    return (conversation.messages || []).map((msg, index) => ({
       ...msg,
       // Ensure every message has an ID (for old messages without IDs)
       id: msg.id || `msg-${index}-${msg.role}`,
     }))
-    if (isStreaming && (streamingContent || streamingReasoning)) {
-      messages.push({
-        id: 'streaming-message',
-        role: 'assistant',
-        content: streamingContent,
-        reasoning: streamingReasoning || undefined,
-        images: streamingImages.length > 0 ? streamingImages : undefined,
-        isStreaming: true,
-      })
-    }
-    return messages
-  }, [conversation, isStreaming, streamingContent, streamingReasoning, streamingImages])
+  }, [conversation])
+
+  // Check if we have streaming content to show
+  const hasStreamingContent = isStreaming && (streamingContent || streamingReasoning)
 
   // Virtual list setup
   const virtualizer = useVirtualizer({
@@ -64,7 +58,7 @@ export function ChatWindow() {
     // Small delay to allow virtual list to update
     const timer = setTimeout(scrollToBottom, 50)
     return () => clearTimeout(timer)
-  }, [displayMessages.length, streamingContent, scrollToBottom])
+  }, [displayMessages.length, hasStreamingContent, scrollToBottom])
 
   if (!conversation) {
     return (
@@ -189,6 +183,25 @@ export function ChatWindow() {
                 </div>
               )
             })}
+
+            {/* Streaming message - rendered separately for performance */}
+            {hasStreamingContent && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  transform: `translateY(${virtualizer.getTotalSize()}px)`,
+                }}
+              >
+                <StreamingMessage
+                  content={streamingContent}
+                  reasoning={streamingReasoning}
+                  images={streamingImages}
+                />
+              </div>
+            )}
 
             {/* Loading indicator - only show when nothing is being streamed yet */}
             {isStreaming && !streamingContent && !streamingReasoning && (

@@ -7,6 +7,7 @@ import { User, Sparkles, Copy, Check, Brain, ChevronDown, ChevronRight, Image as
 
 export const ChatMessage = memo(function ChatMessage({ message }) {
   const [copiedCode, setCopiedCode] = useState(null)
+  const [copiedMessage, setCopiedMessage] = useState(false)
   const [reasoningExpanded, setReasoningExpanded] = useState(false)
   const [lightboxImage, setLightboxImage] = useState(null)
   const isUser = message.role === 'user'
@@ -27,6 +28,12 @@ export const ChatMessage = memo(function ChatMessage({ message }) {
     setCopiedCode(index)
     setTimeout(() => setCopiedCode(null), 2000)
   }, [])
+
+  const copyMessageContent = useCallback(async () => {
+    await navigator.clipboard.writeText(message.content)
+    setCopiedMessage(true)
+    setTimeout(() => setCopiedMessage(false), 2000)
+  }, [message.content])
 
   // Memoize markdown components to prevent recreation on every render
   const markdownComponents = useMemo(() => ({
@@ -477,6 +484,47 @@ export const ChatMessage = memo(function ChatMessage({ message }) {
                 {message.content}
               </ReactMarkdown>
             </div>
+
+            {/* Copy message button */}
+            {message.content && (
+              <div className="mt-3 flex justify-start">
+                <button
+                  onClick={copyMessageContent}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs transition-all duration-200"
+                  style={{
+                    color: copiedMessage ? 'var(--color-assistant)' : 'var(--color-text-muted)',
+                    background: copiedMessage ? 'var(--color-accent-soft)' : 'transparent',
+                    border: `1px solid ${copiedMessage ? 'var(--color-accent)' : 'var(--color-border)'}`,
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!copiedMessage) {
+                      e.currentTarget.style.background = 'var(--color-bg-hover)'
+                      e.currentTarget.style.color = 'var(--color-text-primary)'
+                      e.currentTarget.style.borderColor = 'var(--color-border-accent)'
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!copiedMessage) {
+                      e.currentTarget.style.background = 'transparent'
+                      e.currentTarget.style.color = 'var(--color-text-muted)'
+                      e.currentTarget.style.borderColor = 'var(--color-border)'
+                    }
+                  }}
+                >
+                  {copiedMessage ? (
+                    <>
+                      <Check size={14} />
+                      <span>Copié !</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy size={14} />
+                      <span>Copier</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
 
             {/* Generated images */}
             {hasImages && (

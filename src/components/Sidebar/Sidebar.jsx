@@ -8,6 +8,8 @@ import {
   Zap,
   ArrowUpRight,
   User,
+  FolderKanban,
+  ChevronRight,
 } from 'lucide-react'
 import { ConversationItem } from './ConversationItem'
 import { ModelSelector } from './ModelSelector'
@@ -24,11 +26,13 @@ export function Sidebar() {
   const modelsLoading = useStore((state) => state.modelsLoading)
   const apiKey = useStore((state) => state.apiKey)
   const userProfile = useStore((state) => state.userProfile)
+  const projects = useStore((state) => state.projects)
 
   // Get actions from store
   const setActiveConversationId = useStore((state) => state.setActiveConversationId)
   const setShowApiKeyModal = useStore((state) => state.setShowApiKeyModal)
   const setShowProfileModal = useStore((state) => state.setShowProfileModal)
+  const setShowProjectSelectorModal = useStore((state) => state.setShowProjectSelectorModal)
   const createConversation = useStore((state) => state.createConversation)
   const deleteConversation = useStore((state) => state.deleteConversation)
   const updateConversation = useStore((state) => state.updateConversation)
@@ -36,6 +40,12 @@ export function Sidebar() {
   const exportConversationAsMarkdown = useStore((state) => state.exportConversationAsMarkdown)
   const importConversations = useStore((state) => state.importConversations)
   const setError = useStore((state) => state.setError)
+
+  // Get active conversation's project
+  const activeConversation = conversations.find((c) => c.id === activeConversationId)
+  const activeProject = activeConversation?.projectId
+    ? projects.find((p) => p.id === activeConversation.projectId)
+    : null
 
   // Memoize filtered conversations
   const filteredConversations = useMemo(
@@ -138,6 +148,50 @@ export function Sidebar() {
         >
           <Plus size={18} strokeWidth={2.5} />
           <span>Nouvelle conversation</span>
+        </button>
+
+        {/* Project selector */}
+        <button
+          onClick={() => setShowProjectSelectorModal(true)}
+          disabled={!activeConversationId}
+          className="mt-3 w-full flex items-center gap-3 px-3 py-2.5 rounded-xl
+                   transition-all duration-200 group
+                   disabled:opacity-40 disabled:cursor-not-allowed"
+          style={{
+            background: activeProject ? 'var(--color-accent-soft)' : 'var(--color-bg-tertiary)',
+            border: `1px solid ${activeProject ? 'var(--color-border-accent)' : 'var(--color-border)'}`,
+          }}
+        >
+          <div
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-base flex-shrink-0"
+            style={{
+              background: activeProject ? 'var(--color-bg-secondary)' : 'var(--color-bg-elevated)',
+              border: '1px solid var(--color-border)',
+            }}
+          >
+            {activeProject ? activeProject.icon : <FolderKanban size={16} style={{ color: 'var(--color-text-muted)' }} />}
+          </div>
+          <div className="flex-1 min-w-0 text-left">
+            <p
+              className="text-sm font-medium truncate"
+              style={{
+                color: activeProject ? 'var(--color-accent)' : 'var(--color-text-secondary)',
+              }}
+            >
+              {activeProject ? activeProject.name : 'Aucun projet'}
+            </p>
+            <p
+              className="text-xs truncate"
+              style={{ color: 'var(--color-text-muted)' }}
+            >
+              {activeProject ? 'Cliquer pour changer' : 'Choisir un contexte'}
+            </p>
+          </div>
+          <ChevronRight
+            size={16}
+            className="flex-shrink-0 transition-transform group-hover:translate-x-0.5"
+            style={{ color: 'var(--color-text-muted)' }}
+          />
         </button>
       </div>
 

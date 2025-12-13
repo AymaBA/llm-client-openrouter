@@ -86,6 +86,63 @@ const useStore = create(
       favoriteModels: [],
       showModelSelector: false,
 
+      // ============ PROJECTS ============
+      projects: [],
+      showProjectModal: false,
+      showProjectSelectorModal: false,
+      editingProject: null, // Project being edited, null for new project
+
+      setShowProjectModal: (show) => set({ showProjectModal: show }),
+      setShowProjectSelectorModal: (show) => set({ showProjectSelectorModal: show }),
+      setEditingProject: (project) => set({ editingProject: project }),
+
+      createProject: (projectData) => {
+        const newProject = {
+          id: uuidv4(),
+          name: projectData.name || 'Nouveau projet',
+          description: projectData.description || '',
+          systemPrompt: projectData.systemPrompt || '',
+          contextFiles: projectData.contextFiles || [],
+          icon: projectData.icon || '📁',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        }
+        set((state) => ({
+          projects: [newProject, ...state.projects],
+        }))
+        return newProject.id
+      },
+
+      updateProject: (id, updates) => {
+        set((state) => ({
+          projects: state.projects.map((p) =>
+            p.id === id
+              ? { ...p, ...updates, updatedAt: new Date().toISOString() }
+              : p
+          ),
+        }))
+      },
+
+      deleteProject: (id) => {
+        set((state) => ({
+          projects: state.projects.filter((p) => p.id !== id),
+          // Remove project reference from conversations
+          conversations: state.conversations.map((c) =>
+            c.projectId === id ? { ...c, projectId: null } : c
+          ),
+        }))
+      },
+
+      setConversationProject: (conversationId, projectId) => {
+        set((state) => ({
+          conversations: state.conversations.map((c) =>
+            c.id === conversationId
+              ? { ...c, projectId, updatedAt: new Date().toISOString() }
+              : c
+          ),
+        }))
+      },
+
       setShowModelSelector: (show) => set({ showModelSelector: show }),
       toggleFavoriteModel: (modelId) => set((state) => ({
         favoriteModels: state.favoriteModels.includes(modelId)
@@ -115,11 +172,17 @@ const useStore = create(
         userProfile: { ...state.userProfile, ...profile }
       })),
 
-      // Generate system prompt from user profile
-      getSystemPrompt: () => {
-        const { userProfile } = get()
+      // Generate system prompt from user profile and project
+      getSystemPrompt: (conversationId) => {
+        const { userProfile, projects, conversations } = get()
+        const conversation = conversations.find((c) => c.id === conversationId)
+        const project = conversation?.projectId
+          ? projects.find((p) => p.id === conversation.projectId)
+          : null
+
         const parts = []
 
+        // Part 1: User profile prompt
         if (userProfile.name) {
           parts.push(`L'utilisateur s'appelle ${userProfile.name}.`)
         }
@@ -148,6 +211,19 @@ const useStore = create(
           parts.push(`Instructions supplémentaires : ${userProfile.customInstructions}`)
         }
 
+        // Part 2: Project system prompt
+        if (project?.systemPrompt) {
+          parts.push(`\n\nContexte du projet "${project.name}":\n${project.systemPrompt}`)
+        }
+
+        // Part 3: Project context files
+        if (project?.contextFiles?.length > 0) {
+          parts.push('\n\nFichiers de référence:')
+          project.contextFiles.forEach((file) => {
+            parts.push(`\n--- ${file.name} ---\n${file.content}`)
+          })
+        }
+
         return parts.length > 1 ? parts.join(' ') : ''
       },
 
@@ -165,12 +241,13 @@ const useStore = create(
         })
       },
 
-      createConversation: (model) => {
+      createConversation: (model, projectId = null) => {
         const newConversation = {
           id: uuidv4(),
           title: 'Nouvelle conversation',
           model,
           messages: [],
+          projectId,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         }
@@ -292,7 +369,7 @@ const useStore = create(
         // Build messages array with system prompt
         // Skip system prompt for image generation models (it can confuse them)
         const supportsImageOutput = outputModalities.includes('image')
-        const systemPrompt = supportsImageOutput ? '' : getSystemPrompt()
+        const systemPrompt = supportsImageOutput ? '' : getSystemPrompt(activeConversationId)
         const messages = [
           // Add system prompt if profile is configured (not for image models)
           ...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []),
@@ -306,6 +383,10 @@ const useStore = create(
         let fullResponse = ''
         let fullReasoning = ''
         let allImages = []
+
+        // Throttle state updates for better performance
+        let lastUpdate = 0
+        const UPDATE_INTERVAL = 50 // ms between state updates
 
         try {
           for await (const chunk of streamChat(
@@ -329,12 +410,25 @@ const useStore = create(
                 }
               }
             }
-            set({
-              streamingContent: fullResponse,
-              streamingReasoning: fullReasoning,
-              streamingImages: allImages,
-            })
+
+            // Throttle state updates to avoid excessive re-renders
+            const now = Date.now()
+            if (now - lastUpdate >= UPDATE_INTERVAL) {
+              set({
+                streamingContent: fullResponse,
+                streamingReasoning: fullReasoning,
+                streamingImages: allImages,
+              })
+              lastUpdate = now
+            }
           }
+
+          // Final update to ensure we have all content
+          set({
+            streamingContent: fullResponse,
+            streamingReasoning: fullReasoning,
+            streamingImages: allImages,
+          })
 
           // Add assistant message with reasoning and images
           get().addMessageWithMeta(activeConversationId, 'assistant', fullResponse, {
@@ -438,6 +532,7 @@ const useStore = create(
         activeConversationId: state.activeConversationId,
         userProfile: state.userProfile,
         favoriteModels: state.favoriteModels,
+        projects: state.projects,
       }),
     }
   )
