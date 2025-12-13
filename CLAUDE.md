@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-LLM Client is a React-based chat application that interfaces with the OpenRouter API to provide access to various LLM models. It features streaming responses, conversation management, user profiles with personalized system prompts, customizable theming, **image generation**, **reasoning/thinking display**, **full-featured model selector**, and **custom projects (GPT-like contexts)**.
+LLM Client is a React-based chat application that interfaces with the OpenRouter API to provide access to various LLM models. It features streaming responses, conversation management, user profiles with personalized system prompts, customizable theming, **image generation**, **reasoning/thinking display**, **full-featured model selector**, **custom projects (GPT-like contexts)**, and **web search integration**.
 
 ## Commands
 
@@ -17,11 +17,12 @@ LLM Client is a React-based chat application that interfaces with the OpenRouter
 ### State Management
 All application state is centralized in `src/store/useStore.js` using Zustand with localStorage persistence (key: `llm-client-storage`). The store manages:
 - API key and model selection
-- Conversations (CRUD, active conversation tracking, **projectId association**)
-- Streaming state (content, reasoning, images) and abort controller
-- User profile settings (name, language, communication style, accent color)
+- Conversations (CRUD, active conversation tracking, **projectId association**, **webSearchEnabled**)
+- Streaming state (content, reasoning, images, **citations**) and abort controller
+- User profile settings (name, language, communication style, accent color, **webSearchMaxResults**)
 - Favorite models list
 - **Projects** (custom GPT-like contexts with system prompts and context files)
+- **Web search** (per-conversation toggle, citations tracking)
 - Import/export functionality
 
 ### API Integration
@@ -31,6 +32,8 @@ All application state is centralized in `src/store/useStore.js` using Zustand wi
   - Regular text content
   - **Reasoning tokens** (`delta.reasoning`, `delta.reasoning_content`, `delta.reasoning_details`)
   - **Image generation** (`delta.images`, `message.images`, multimodal content arrays)
+  - **Web search** (via `plugins: [{ id: "web", max_results: N }]`)
+  - **Citations parsing** (from `annotations` or `citations` in response)
   - Automatic `modalities: ["text", "image"]` for image-capable models
 - `generateTitle()` - Auto-generate conversation titles using a lightweight model (gemini-2.5-flash-lite)
 
@@ -50,8 +53,8 @@ All application state is centralized in `src/store/useStore.js` using Zustand wi
 
 ### Component Structure
 - `Layout.jsx` - Responsive sidebar layout with mobile support
-- `Chat/` - ChatWindow (message display + streaming), ChatMessage (markdown + reasoning + images), ChatInput
-- `Sidebar/` - Conversation list, ModelSelector (opens modal), **Project selector**
+- `Chat/` - ChatWindow (message display + streaming + **web search indicator**), ChatMessage (markdown + reasoning + images + **citations**), ChatInput (**web search toggle**)
+- `Sidebar/` - Conversation list, ModelSelector (opens modal), **Project selector**, **Web search toggle**
 - `Settings/` - ApiKeyModal, ProfileModal
 - `Projects/` - **ProjectModal** (create/edit projects), **ProjectSelectorModal** (choose project for conversation)
 - `ModelSelectorModal.jsx` - Full-screen model browser with search, filters, favorites
@@ -81,6 +84,16 @@ All application state is centralized in `src/store/useStore.js` using Zustand wi
   - Pricing per million tokens
   - Context window size
 - Keyboard support (Escape to close)
+
+#### Web Search
+Real-time web search integration via OpenRouter's native plugin system:
+- **Toggle locations**: Quick toggle in ChatInput + persistent toggle in Sidebar
+- **Per-conversation setting**: Each conversation can have web search enabled/disabled (`webSearchEnabled`)
+- **Plugin integration**: Uses OpenRouter's `plugins: [{ id: "web", max_results: N }]`
+- **Citations display**: Shows clickable source links with favicons after AI responses
+- **Visual feedback**: "Recherche en cours..." indicator with Globe icon during search
+- **Streaming citations**: Citations appear during streaming and are saved with messages
+- **Configurable results**: `webSearchMaxResults` in user profile (default: 5)
 
 #### Projects (Custom GPT-like Contexts)
 Similar to OpenAI GPTs or Claude Projects, allows creating custom contexts for conversations:

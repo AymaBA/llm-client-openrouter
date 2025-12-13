@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
-import { Sparkles, Brain, ChevronDown, ChevronRight } from 'lucide-react'
+import { Sparkles, Brain, ChevronDown, ChevronRight, Link2, ExternalLink } from 'lucide-react'
 
 // Simplified markdown components for streaming (no copy buttons, simpler structure)
 const streamingMarkdownComponents = {
@@ -213,9 +213,10 @@ function useThrottledValue(value, delay = 150) {
   return throttledValue
 }
 
-export const StreamingMessage = memo(function StreamingMessage({ content, reasoning, images }) {
+export const StreamingMessage = memo(function StreamingMessage({ content, reasoning, images, citations }) {
   const [reasoningExpanded, setReasoningExpanded] = useState(false)
   const hasReasoning = reasoning && reasoning.length > 0
+  const hasCitations = citations && citations.length > 0
 
   // Throttle markdown rendering to every 150ms for smooth updates without glitching
   const throttledContent = useThrottledValue(content, 150)
@@ -321,6 +322,65 @@ export const StreamingMessage = memo(function StreamingMessage({ content, reason
                 {throttledContent || ''}
               </ReactMarkdown>
             </div>
+
+            {/* Citations/Sources during streaming */}
+            {hasCitations && (
+              <div
+                className="mt-4 pt-4"
+                style={{ borderTop: '1px solid var(--color-border)' }}
+              >
+                <div className="flex items-center gap-2 mb-3">
+                  <Link2 size={14} style={{ color: 'var(--color-text-muted)' }} />
+                  <span
+                    className="text-sm font-medium"
+                    style={{ color: 'var(--color-text-secondary)' }}
+                  >
+                    Sources ({citations.length})
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {citations.map((cite, idx) => {
+                    let hostname = ''
+                    try {
+                      hostname = new URL(cite.url).hostname.replace('www.', '')
+                    } catch {
+                      hostname = cite.url
+                    }
+                    return (
+                      <a
+                        key={idx}
+                        href={cite.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all duration-200 group"
+                        style={{
+                          background: 'var(--color-bg-elevated)',
+                          border: '1px solid var(--color-border)',
+                          color: 'var(--color-text-secondary)',
+                        }}
+                      >
+                        <img
+                          src={`https://www.google.com/s2/favicons?domain=${hostname}&sz=32`}
+                          alt=""
+                          className="w-4 h-4 rounded-sm"
+                          onError={(e) => {
+                            e.target.style.display = 'none'
+                          }}
+                        />
+                        <span className="truncate max-w-[200px]">
+                          {cite.title || hostname}
+                        </span>
+                        <ExternalLink
+                          size={12}
+                          className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                          style={{ color: 'var(--color-accent)' }}
+                        />
+                      </a>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

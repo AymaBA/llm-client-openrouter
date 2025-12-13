@@ -1,6 +1,6 @@
 import { useEffect, useRef, useMemo, useCallback } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { MessageSquare, Zap } from 'lucide-react'
+import { MessageSquare, Zap, Globe } from 'lucide-react'
 import { ChatMessage } from './ChatMessage'
 import { StreamingMessage } from './StreamingMessage'
 import { ChatInput } from './ChatInput'
@@ -16,6 +16,8 @@ export function ChatWindow() {
   const streamingContent = useStore((state) => state.streamingContent)
   const streamingReasoning = useStore((state) => state.streamingReasoning)
   const streamingImages = useStore((state) => state.streamingImages)
+  const streamingCitations = useStore((state) => state.streamingCitations)
+  const isWebSearching = useStore((state) => state.isWebSearching)
   const apiKey = useStore((state) => state.apiKey)
   const selectedModel = useStore((state) => state.selectedModel)
 
@@ -199,6 +201,7 @@ export function ChatWindow() {
                   content={streamingContent}
                   reasoning={streamingReasoning}
                   images={streamingImages}
+                  citations={streamingCitations}
                 />
               </div>
             )}
@@ -208,7 +211,7 @@ export function ChatWindow() {
               <div
                 className="py-6"
                 style={{
-                  background: 'var(--color-assistant-soft)',
+                  background: isWebSearching ? 'var(--color-accent-soft)' : 'var(--color-assistant-soft)',
                   position: 'absolute',
                   top: 0,
                   left: 0,
@@ -221,34 +224,42 @@ export function ChatWindow() {
                     <div
                       className="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center"
                       style={{
-                        background: 'linear-gradient(135deg, var(--color-assistant) 0%, #10b981 100%)',
-                        boxShadow: '0 0 20px rgba(52, 211, 153, 0.3)'
+                        background: isWebSearching
+                          ? 'linear-gradient(135deg, var(--color-accent) 0%, #f97316 100%)'
+                          : 'linear-gradient(135deg, var(--color-assistant) 0%, #10b981 100%)',
+                        boxShadow: isWebSearching
+                          ? '0 0 20px rgba(251, 191, 36, 0.3)'
+                          : '0 0 20px rgba(52, 211, 153, 0.3)'
                       }}
                     >
-                      <div className="flex gap-1">
-                        <span
-                          className="w-1.5 h-1.5 rounded-full animate-typing"
-                          style={{ background: 'white', animationDelay: '0ms' }}
-                        />
-                        <span
-                          className="w-1.5 h-1.5 rounded-full animate-typing"
-                          style={{ background: 'white', animationDelay: '200ms' }}
-                        />
-                        <span
-                          className="w-1.5 h-1.5 rounded-full animate-typing"
-                          style={{ background: 'white', animationDelay: '400ms' }}
-                        />
-                      </div>
+                      {isWebSearching ? (
+                        <Globe size={18} className="text-black animate-pulse" />
+                      ) : (
+                        <div className="flex gap-1">
+                          <span
+                            className="w-1.5 h-1.5 rounded-full animate-typing"
+                            style={{ background: 'white', animationDelay: '0ms' }}
+                          />
+                          <span
+                            className="w-1.5 h-1.5 rounded-full animate-typing"
+                            style={{ background: 'white', animationDelay: '200ms' }}
+                          />
+                          <span
+                            className="w-1.5 h-1.5 rounded-full animate-typing"
+                            style={{ background: 'white', animationDelay: '400ms' }}
+                          />
+                        </div>
+                      )}
                     </div>
                     <div className="pt-2">
                       <p
                         className="text-sm font-medium mb-1"
-                        style={{ color: 'var(--color-assistant)' }}
+                        style={{ color: isWebSearching ? 'var(--color-accent)' : 'var(--color-assistant)' }}
                       >
-                        Assistant
+                        {isWebSearching ? 'Recherche web' : 'Assistant'}
                       </p>
                       <p style={{ color: 'var(--color-text-muted)' }}>
-                        Réflexion en cours...
+                        {isWebSearching ? 'Recherche en cours...' : 'Réflexion en cours...'}
                       </p>
                     </div>
                   </div>

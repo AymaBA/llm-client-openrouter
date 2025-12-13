@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Send, Square } from 'lucide-react'
+import { Send, Square, Globe } from 'lucide-react'
 import useStore from '../../store/useStore'
 
 export function ChatInput({ disabled }) {
@@ -10,6 +10,13 @@ export function ChatInput({ disabled }) {
   const isStreaming = useStore((state) => state.isStreaming)
   const sendMessage = useStore((state) => state.sendMessage)
   const stopStreaming = useStore((state) => state.stopStreaming)
+  const conversations = useStore((state) => state.conversations)
+  const activeConversationId = useStore((state) => state.activeConversationId)
+  const toggleWebSearch = useStore((state) => state.toggleWebSearch)
+
+  // Get web search state for active conversation
+  const activeConversation = conversations.find((c) => c.id === activeConversationId)
+  const webSearchEnabled = activeConversation?.webSearchEnabled || false
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -39,6 +46,34 @@ export function ChatInput({ disabled }) {
       style={{ background: 'var(--color-bg-primary)' }}
     >
       <div className="max-w-3xl mx-auto">
+        {/* Web Search Toggle */}
+        {activeConversationId && (
+          <div className="flex items-center gap-2 mb-2">
+            <button
+              type="button"
+              onClick={() => toggleWebSearch(activeConversationId)}
+              disabled={disabled || isStreaming}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium
+                       transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{
+                background: webSearchEnabled ? 'var(--color-accent-soft)' : 'var(--color-bg-elevated)',
+                color: webSearchEnabled ? 'var(--color-accent)' : 'var(--color-text-muted)',
+                border: `1px solid ${webSearchEnabled ? 'var(--color-border-accent)' : 'var(--color-border)'}`,
+              }}
+              title={webSearchEnabled ? 'Désactiver la recherche web' : 'Activer la recherche web'}
+            >
+              <Globe size={14} />
+              <span>Recherche web</span>
+              {webSearchEnabled && (
+                <span
+                  className="w-1.5 h-1.5 rounded-full"
+                  style={{ background: 'var(--color-accent)' }}
+                />
+              )}
+            </button>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit}>
           <div
             className="relative flex items-end gap-2 rounded-xl transition-all duration-200"

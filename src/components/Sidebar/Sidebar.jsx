@@ -10,6 +10,7 @@ import {
   User,
   FolderKanban,
   ChevronRight,
+  Globe,
 } from 'lucide-react'
 import { ConversationItem } from './ConversationItem'
 import { ModelSelector } from './ModelSelector'
@@ -40,12 +41,14 @@ export function Sidebar() {
   const exportConversationAsMarkdown = useStore((state) => state.exportConversationAsMarkdown)
   const importConversations = useStore((state) => state.importConversations)
   const setError = useStore((state) => state.setError)
+  const toggleWebSearch = useStore((state) => state.toggleWebSearch)
 
-  // Get active conversation's project
+  // Get active conversation's project and web search state
   const activeConversation = conversations.find((c) => c.id === activeConversationId)
   const activeProject = activeConversation?.projectId
     ? projects.find((p) => p.id === activeConversation.projectId)
     : null
+  const webSearchEnabled = activeConversation?.webSearchEnabled || false
 
   // Memoize filtered conversations
   const filteredConversations = useMemo(
@@ -192,6 +195,60 @@ export function Sidebar() {
             className="flex-shrink-0 transition-transform group-hover:translate-x-0.5"
             style={{ color: 'var(--color-text-muted)' }}
           />
+        </button>
+
+        {/* Web Search Toggle */}
+        <button
+          onClick={() => activeConversationId && toggleWebSearch(activeConversationId)}
+          disabled={!activeConversationId}
+          className="mt-3 w-full flex items-center gap-3 px-3 py-2.5 rounded-xl
+                   transition-all duration-200 group
+                   disabled:opacity-40 disabled:cursor-not-allowed"
+          style={{
+            background: webSearchEnabled ? 'var(--color-accent-soft)' : 'var(--color-bg-tertiary)',
+            border: `1px solid ${webSearchEnabled ? 'var(--color-border-accent)' : 'var(--color-border)'}`,
+          }}
+        >
+          <div
+            className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+            style={{
+              background: webSearchEnabled ? 'var(--color-bg-secondary)' : 'var(--color-bg-elevated)',
+              border: '1px solid var(--color-border)',
+            }}
+          >
+            <Globe size={16} style={{ color: webSearchEnabled ? 'var(--color-accent)' : 'var(--color-text-muted)' }} />
+          </div>
+          <div className="flex-1 min-w-0 text-left">
+            <p
+              className="text-sm font-medium truncate"
+              style={{
+                color: webSearchEnabled ? 'var(--color-accent)' : 'var(--color-text-secondary)',
+              }}
+            >
+              Recherche web
+            </p>
+            <p
+              className="text-xs truncate"
+              style={{ color: 'var(--color-text-muted)' }}
+            >
+              {webSearchEnabled ? 'Activée pour cette conversation' : 'Désactivée'}
+            </p>
+          </div>
+          <div
+            className="w-10 h-5 rounded-full flex-shrink-0 relative transition-all duration-200"
+            style={{
+              background: webSearchEnabled ? 'var(--color-accent)' : 'var(--color-bg-hover)',
+            }}
+          >
+            <div
+              className="absolute top-0.5 w-4 h-4 rounded-full transition-all duration-200"
+              style={{
+                background: 'white',
+                left: webSearchEnabled ? 'calc(100% - 18px)' : '2px',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+              }}
+            />
+          </div>
         </button>
       </div>
 

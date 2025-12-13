@@ -17,7 +17,7 @@ export async function fetchModels(apiKey) {
 }
 
 export async function* streamChat(apiKey, model, messages, signal, options = {}) {
-  const { outputModalities = [] } = options;
+  const { outputModalities = [], webSearchEnabled = false, webSearchMaxResults = 5 } = options;
 
   const requestBody = {
     model,
@@ -28,6 +28,14 @@ export async function* streamChat(apiKey, model, messages, signal, options = {})
   // Add modalities if the model supports more than just text
   if (outputModalities.length > 0 && (outputModalities.includes('image') || outputModalities.length > 1)) {
     requestBody.modalities = outputModalities;
+  }
+
+  // Add web search plugin if enabled
+  if (webSearchEnabled) {
+    requestBody.plugins = [{
+      id: "web",
+      max_results: webSearchMaxResults
+    }];
   }
 
   const response = await fetch(`${BASE_URL}/chat/completions`, {
@@ -155,8 +163,36 @@ export async function* streamChat(apiKey, model, messages, signal, options = {})
           }
         }
 
+        // Handle web search citations/annotations
+        // Citations can come from delta.annotations, message.annotations, or choice.annotations
+        const annotations = delta?.annotations || message?.annotations || choice?.annotations;
+        if (annotations && annotations.length > 0) {
+          chunk.citations = [];
+          for (const annotation of annotations) {
+            if (annotation.type === 'url_citation' || annotation.url) {
+              chunk.citations.push({
+                url: annotation.url || annotation.url_citation?.url,
+                title: annotation.title || annotation.url_citation?.title || '',
+                snippet: annotation.text || annotation.snippet || '',
+              });
+            }
+          }
+        }
+
+        // Also check for citations in the top-level json
+        if (json.citations && json.citations.length > 0) {
+          chunk.citations = chunk.citations || [];
+          for (const cite of json.citations) {
+            chunk.citations.push({
+              url: cite.url,
+              title: cite.title || '',
+              snippet: cite.snippet || cite.text || '',
+            });
+          }
+        }
+
         // Only yield if we have something
-        if (chunk.content || chunk.reasoning || chunk.images) {
+        if (chunk.content || chunk.reasoning || chunk.images || chunk.citations) {
           yield chunk;
         }
       } catch (e) {

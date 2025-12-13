@@ -80,6 +80,7 @@ const useStore = create(
         language: 'french',
         customInstructions: '',
         accentColor: '#fbbf24', // Default amber
+        webSearchMaxResults: 5, // Default number of web search results
       },
 
       // Favorite models
@@ -140,6 +141,23 @@ const useStore = create(
               ? { ...c, projectId, updatedAt: new Date().toISOString() }
               : c
           ),
+        }))
+      },
+
+      // ============ WEB SEARCH ============
+      toggleWebSearch: (conversationId) => {
+        set((state) => ({
+          conversations: state.conversations.map((c) =>
+            c.id === conversationId
+              ? { ...c, webSearchEnabled: !c.webSearchEnabled, updatedAt: new Date().toISOString() }
+              : c
+          ),
+        }))
+      },
+
+      setWebSearchMaxResults: (count) => {
+        set((state) => ({
+          userProfile: { ...state.userProfile, webSearchMaxResults: count },
         }))
       },
 
@@ -339,6 +357,8 @@ const useStore = create(
       streamingContent: '',
       streamingReasoning: '',
       streamingImages: [],
+      streamingCitations: [],
+      isWebSearching: false,
       error: null,
       abortController: null,
 
@@ -347,7 +367,7 @@ const useStore = create(
 
       sendMessage: async (content) => {
         const state = get()
-        const { activeConversationId, apiKey, getSystemPrompt, models } = state
+        const { activeConversationId, apiKey, getSystemPrompt, models, userProfile } = state
         const activeConversation = state.conversations.find(
           (c) => c.id === activeConversationId
         )
@@ -356,12 +376,21 @@ const useStore = create(
 
         const modelToUse = activeConversation.model
         const isFirstMessage = activeConversation.messages.length === 0
+        const webSearchEnabled = activeConversation.webSearchEnabled || false
+        const webSearchMaxResults = userProfile.webSearchMaxResults || 5
 
         // Check model capabilities from architecture
         const modelInfo = models.find((m) => m.id === modelToUse)
         const outputModalities = modelInfo?.architecture?.output_modalities || []
 
-        set({ error: null, streamingContent: '', streamingReasoning: '', streamingImages: [] })
+        set({
+          error: null,
+          streamingContent: '',
+          streamingReasoning: '',
+          streamingImages: [],
+          streamingCitations: [],
+          isWebSearching: webSearchEnabled,
+        })
 
         // Add user message
         get().addMessage(activeConversationId, 'user', content)
@@ -383,6 +412,7 @@ const useStore = create(
         let fullResponse = ''
         let fullReasoning = ''
         let allImages = []
+        let allCitations = []
 
         // Throttle state updates for better performance
         let lastUpdate = 0
@@ -394,7 +424,7 @@ const useStore = create(
             modelToUse,
             messages,
             abortController.signal,
-            { outputModalities }
+            { outputModalities, webSearchEnabled, webSearchMaxResults }
           )) {
             if (chunk.content) {
               fullResponse += chunk.content
@@ -410,6 +440,16 @@ const useStore = create(
                 }
               }
             }
+            if (chunk.citations) {
+              // Deduplicate citations by URL
+              for (const cite of chunk.citations) {
+                if (!allCitations.some(existing => existing.url === cite.url)) {
+                  allCitations.push(cite)
+                }
+              }
+              // Once we receive citations, web search is complete
+              set({ isWebSearching: false })
+            }
 
             // Throttle state updates to avoid excessive re-renders
             const now = Date.now()
@@ -418,6 +458,7 @@ const useStore = create(
                 streamingContent: fullResponse,
                 streamingReasoning: fullReasoning,
                 streamingImages: allImages,
+                streamingCitations: allCitations,
               })
               lastUpdate = now
             }
@@ -428,14 +469,17 @@ const useStore = create(
             streamingContent: fullResponse,
             streamingReasoning: fullReasoning,
             streamingImages: allImages,
+            streamingCitations: allCitations,
+            isWebSearching: false,
           })
 
-          // Add assistant message with reasoning and images
+          // Add assistant message with reasoning, images, and citations
           get().addMessageWithMeta(activeConversationId, 'assistant', fullResponse, {
             reasoning: fullReasoning || undefined,
             images: allImages.length > 0 ? allImages : undefined,
+            citations: allCitations.length > 0 ? allCitations : undefined,
           })
-          set({ streamingContent: '', streamingReasoning: '', streamingImages: [], isStreaming: false, abortController: null })
+          set({ streamingContent: '', streamingReasoning: '', streamingImages: [], streamingCitations: [], isStreaming: false, isWebSearching: false, abortController: null })
 
           // Generate title after first exchange
           if (isFirstMessage) {
@@ -452,7 +496,7 @@ const useStore = create(
           if (err.name !== 'AbortError') {
             set({ error: err.message })
           }
-          set({ streamingContent: '', streamingReasoning: '', streamingImages: [], isStreaming: false, abortController: null })
+          set({ streamingContent: '', streamingReasoning: '', streamingImages: [], streamingCitations: [], isStreaming: false, isWebSearching: false, abortController: null })
         }
       },
 
