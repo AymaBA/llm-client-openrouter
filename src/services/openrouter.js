@@ -16,8 +16,18 @@ export async function fetchModels(apiKey) {
   return data.data || [];
 }
 
-export async function* streamChat(apiKey, model, messages, signal, options = {}) {
-  const { outputModalities = [], webSearchEnabled = false, webSearchMaxResults = 5 } = options;
+export async function* streamChat(
+  apiKey,
+  model,
+  messages,
+  signal,
+  options = {}
+) {
+  const {
+    outputModalities = [],
+    webSearchEnabled = false,
+    webSearchMaxResults = 5,
+  } = options;
 
   const requestBody = {
     model,
@@ -26,16 +36,24 @@ export async function* streamChat(apiKey, model, messages, signal, options = {})
   };
 
   // Add modalities if the model supports more than just text
-  if (outputModalities.length > 0 && (outputModalities.includes('image') || outputModalities.length > 1)) {
+  if (
+    outputModalities.length > 0 &&
+    (outputModalities.includes("image") || outputModalities.length > 1)
+  ) {
     requestBody.modalities = outputModalities;
   }
 
   // Add web search plugin if enabled
+  // Use "exa" engine to ensure compatibility with all models/providers
+  // (native search only works with Anthropic direct provider, not Bedrock/Vertex)
   if (webSearchEnabled) {
-    requestBody.plugins = [{
-      id: "web",
-      max_results: webSearchMaxResults
-    }];
+    requestBody.plugins = [
+      {
+        id: "web",
+        max_results: webSearchMaxResults,
+        engine: "exa",
+      },
+    ];
   }
 
   const response = await fetch(`${BASE_URL}/chat/completions`, {
@@ -116,22 +134,24 @@ export async function* streamChat(apiKey, model, messages, signal, options = {})
         const message = choice.message;
         if (message) {
           // Handle string content
-          if (typeof message.content === 'string' && !chunk.content) {
+          if (typeof message.content === "string" && !chunk.content) {
             chunk.content = message.content;
           }
 
           // Handle array content (multimodal format)
           if (Array.isArray(message.content)) {
             for (const item of message.content) {
-              if (item.type === 'text' && item.text) {
-                chunk.content = (chunk.content || '') + item.text;
-              } else if (item.type === 'image_url' && item.image_url?.url) {
+              if (item.type === "text" && item.text) {
+                chunk.content = (chunk.content || "") + item.text;
+              } else if (item.type === "image_url" && item.image_url?.url) {
                 chunk.images = chunk.images || [];
                 chunk.images.push({ url: item.image_url.url });
-              } else if (item.type === 'image' && item.image) {
+              } else if (item.type === "image" && item.image) {
                 chunk.images = chunk.images || [];
                 // Handle raw base64 or data URL
-                const url = item.image.startsWith('data:') ? item.image : `data:image/png;base64,${item.image}`;
+                const url = item.image.startsWith("data:")
+                  ? item.image
+                  : `data:image/png;base64,${item.image}`;
                 chunk.images.push({ url });
               }
             }
@@ -150,14 +170,16 @@ export async function* streamChat(apiKey, model, messages, signal, options = {})
         // Also check for images in delta with multimodal content format
         if (delta && Array.isArray(delta.content)) {
           for (const item of delta.content) {
-            if (item.type === 'text' && item.text) {
-              chunk.content = (chunk.content || '') + item.text;
-            } else if (item.type === 'image_url' && item.image_url?.url) {
+            if (item.type === "text" && item.text) {
+              chunk.content = (chunk.content || "") + item.text;
+            } else if (item.type === "image_url" && item.image_url?.url) {
               chunk.images = chunk.images || [];
               chunk.images.push({ url: item.image_url.url });
-            } else if (item.type === 'image' && item.image) {
+            } else if (item.type === "image" && item.image) {
               chunk.images = chunk.images || [];
-              const url = item.image.startsWith('data:') ? item.image : `data:image/png;base64,${item.image}`;
+              const url = item.image.startsWith("data:")
+                ? item.image
+                : `data:image/png;base64,${item.image}`;
               chunk.images.push({ url });
             }
           }
@@ -165,15 +187,16 @@ export async function* streamChat(apiKey, model, messages, signal, options = {})
 
         // Handle web search citations/annotations
         // Citations can come from delta.annotations, message.annotations, or choice.annotations
-        const annotations = delta?.annotations || message?.annotations || choice?.annotations;
+        const annotations =
+          delta?.annotations || message?.annotations || choice?.annotations;
         if (annotations && annotations.length > 0) {
           chunk.citations = [];
           for (const annotation of annotations) {
-            if (annotation.type === 'url_citation' || annotation.url) {
+            if (annotation.type === "url_citation" || annotation.url) {
               chunk.citations.push({
                 url: annotation.url || annotation.url_citation?.url,
-                title: annotation.title || annotation.url_citation?.title || '',
-                snippet: annotation.text || annotation.snippet || '',
+                title: annotation.title || annotation.url_citation?.title || "",
+                snippet: annotation.text || annotation.snippet || "",
               });
             }
           }
@@ -185,14 +208,19 @@ export async function* streamChat(apiKey, model, messages, signal, options = {})
           for (const cite of json.citations) {
             chunk.citations.push({
               url: cite.url,
-              title: cite.title || '',
-              snippet: cite.snippet || cite.text || '',
+              title: cite.title || "",
+              snippet: cite.snippet || cite.text || "",
             });
           }
         }
 
         // Only yield if we have something
-        if (chunk.content || chunk.reasoning || chunk.images || chunk.citations) {
+        if (
+          chunk.content ||
+          chunk.reasoning ||
+          chunk.images ||
+          chunk.citations
+        ) {
           yield chunk;
         }
       } catch (e) {
