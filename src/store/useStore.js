@@ -365,7 +365,7 @@ const useStore = create(
       setError: (error) => set({ error }),
       clearError: () => set({ error: null }),
 
-      sendMessage: async (content) => {
+      sendMessage: async (content, images = []) => {
         const state = get()
         const { activeConversationId, apiKey, getSystemPrompt, models, userProfile } = state
         const activeConversation = state.conversations.find(
@@ -392,19 +392,60 @@ const useStore = create(
           isWebSearching: webSearchEnabled,
         })
 
-        // Add user message
-        get().addMessage(activeConversationId, 'user', content)
+        // Add user message with images metadata
+        const hasImages = images && images.length > 0
+        if (hasImages) {
+          get().addMessageWithMeta(activeConversationId, 'user', content, { userImages: images })
+        } else {
+          get().addMessage(activeConversationId, 'user', content)
+        }
+
+        // Helper function to format message content for multimodal API
+        const formatMessageContent = (msg) => {
+          // If message has user images, format as multimodal content array
+          if (msg.userImages && msg.userImages.length > 0) {
+            const contentArray = []
+            // Add text first if present
+            if (msg.content) {
+              contentArray.push({ type: 'text', text: msg.content })
+            }
+            // Add images
+            for (const img of msg.userImages) {
+              contentArray.push({
+                type: 'image_url',
+                image_url: { url: img.url }
+              })
+            }
+            return contentArray
+          }
+          // Regular text content
+          return msg.content
+        }
 
         // Build messages array with system prompt
         // Skip system prompt for image generation models (it can confuse them)
         const supportsImageOutput = outputModalities.includes('image')
         const systemPrompt = supportsImageOutput ? '' : getSystemPrompt(activeConversationId)
+
+        // Format current message content (with images if provided)
+        const currentMessageContent = hasImages
+          ? [
+              { type: 'text', text: content },
+              ...images.map(img => ({ type: 'image_url', image_url: { url: img.url } }))
+            ]
+          : content
+
         const messages = [
           // Add system prompt if profile is configured (not for image models)
           ...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []),
-          ...activeConversation.messages,
-          { role: 'user', content },
-        ].map((m) => ({ role: m.role, content: m.content }))
+          // Previous messages (format with images if they have them)
+          ...activeConversation.messages.map((m) => ({
+            role: m.role,
+            content: formatMessageContent(m)
+          })),
+          // Current user message
+          { role: 'user', content: currentMessageContent },
+        ]
 
         const abortController = new AbortController()
         set({ isStreaming: true, abortController })

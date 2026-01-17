@@ -3,7 +3,8 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
-import { User, Sparkles, Copy, Check, Brain, ChevronDown, ChevronRight, Image as ImageIcon, Download, X, ZoomIn, Link2, ExternalLink } from 'lucide-react'
+import { User, Sparkles, Copy, Check, Brain, ChevronDown, ChevronRight, Image as ImageIcon, Download, ZoomIn, Link2, ExternalLink } from 'lucide-react'
+import { ImageLightbox } from '../ImageLightbox'
 
 export const ChatMessage = memo(function ChatMessage({ message }) {
   const [copiedCode, setCopiedCode] = useState(null)
@@ -13,7 +14,22 @@ export const ChatMessage = memo(function ChatMessage({ message }) {
   const isUser = message.role === 'user'
   const hasReasoning = message.reasoning && message.reasoning.length > 0
   const hasImages = message.images && message.images.length > 0
+  const hasUserImages = message.userImages && message.userImages.length > 0
   const hasCitations = message.citations && message.citations.length > 0
+
+  // Extract text content from multimodal content arrays
+  const messageContent = useMemo(() => {
+    if (typeof message.content === 'string') {
+      return message.content
+    }
+    if (Array.isArray(message.content)) {
+      return message.content
+        .filter(item => item.type === 'text')
+        .map(item => item.text)
+        .join('')
+    }
+    return ''
+  }, [message.content])
 
   const downloadImage = useCallback((url, index) => {
     const link = document.createElement('a')
@@ -31,10 +47,10 @@ export const ChatMessage = memo(function ChatMessage({ message }) {
   }, [])
 
   const copyMessageContent = useCallback(async () => {
-    await navigator.clipboard.writeText(message.content)
+    await navigator.clipboard.writeText(messageContent)
     setCopiedMessage(true)
     setTimeout(() => setCopiedMessage(false), 2000)
-  }, [message.content])
+  }, [messageContent])
 
   // Memoize markdown components to prevent recreation on every render
   const markdownComponents = useMemo(() => ({
@@ -413,6 +429,52 @@ export const ChatMessage = memo(function ChatMessage({ message }) {
               {isUser ? 'Vous' : 'Assistant'}
             </p>
 
+            {/* User uploaded images */}
+            {hasUserImages && (
+              <div className="mb-4">
+                <div
+                  className="grid gap-2"
+                  style={{
+                    gridTemplateColumns: message.userImages.length === 1
+                      ? 'minmax(0, 300px)'
+                      : 'repeat(auto-fill, minmax(150px, 1fr))',
+                    maxWidth: message.userImages.length === 1 ? '300px' : '100%',
+                  }}
+                >
+                  {message.userImages.map((img, idx) => (
+                    <div
+                      key={idx}
+                      className="relative group rounded-xl overflow-hidden cursor-pointer"
+                      style={{
+                        border: '1px solid var(--color-border)',
+                        background: 'var(--color-bg-elevated)',
+                      }}
+                      onClick={() => setLightboxImage({ url: img.url, index: idx, isUserImage: true })}
+                    >
+                      <img
+                        src={img.url}
+                        alt={img.name || `Image ${idx + 1}`}
+                        className="w-full h-auto"
+                        style={{ display: 'block' }}
+                      />
+                      <div
+                        className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+                        style={{ background: 'rgba(0, 0, 0, 0.4)' }}
+                      >
+                        <div
+                          className="flex items-center gap-2 px-3 py-1.5 rounded-lg"
+                          style={{ background: 'white', color: 'black' }}
+                        >
+                          <ZoomIn size={14} />
+                          <span className="text-xs font-medium">Agrandir</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Reasoning section (collapsible) */}
             {hasReasoning && (
               <div
@@ -477,17 +539,19 @@ export const ChatMessage = memo(function ChatMessage({ message }) {
             )}
 
             {/* Message content */}
-            <div className="prose-custom">
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                components={markdownComponents}
-              >
-                {message.content}
-              </ReactMarkdown>
-            </div>
+            {messageContent && (
+              <div className="prose-custom">
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={markdownComponents}
+                >
+                  {messageContent}
+                </ReactMarkdown>
+              </div>
+            )}
 
             {/* Copy message button */}
-            {message.content && (
+            {messageContent && (
               <div className="mt-3 flex justify-start">
                 <button
                   onClick={copyMessageContent}
@@ -663,83 +727,12 @@ export const ChatMessage = memo(function ChatMessage({ message }) {
               </div>
             )}
 
-            {/* Image modal */}
+            {/* Image lightbox */}
             {lightboxImage && (
-              <div
-                className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-8"
-                style={{ background: 'rgba(0, 0, 0, 0.8)', backdropFilter: 'blur(8px)' }}
-                onClick={() => setLightboxImage(null)}
-              >
-                {/* Modal container */}
-                <div
-                  className="relative w-full max-w-5xl max-h-[90vh] rounded-2xl overflow-hidden flex flex-col"
-                  style={{
-                    background: 'var(--color-bg-primary)',
-                    border: '1px solid var(--color-border)',
-                    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {/* Modal header */}
-                  <div
-                    className="flex items-center justify-between px-4 py-3 flex-shrink-0"
-                    style={{
-                      background: 'var(--color-bg-secondary)',
-                      borderBottom: '1px solid var(--color-border)',
-                    }}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div
-                        className="w-8 h-8 rounded-lg flex items-center justify-center"
-                        style={{ background: 'var(--color-accent-soft)' }}
-                      >
-                        <ImageIcon size={16} style={{ color: 'var(--color-accent)' }} />
-                      </div>
-                      <span
-                        className="font-medium"
-                        style={{ color: 'var(--color-text-primary)' }}
-                      >
-                        Image générée
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => downloadImage(lightboxImage.url, lightboxImage.index)}
-                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all duration-200 hover:scale-105"
-                        style={{
-                          background: 'var(--color-accent)',
-                          color: 'black',
-                        }}
-                      >
-                        <Download size={16} />
-                        <span className="text-sm font-medium">Télécharger</span>
-                      </button>
-                      <button
-                        onClick={() => setLightboxImage(null)}
-                        className="p-2 rounded-lg transition-colors duration-200"
-                        style={{ color: 'var(--color-text-muted)' }}
-                        onMouseEnter={(e) => e.currentTarget.style.background = 'var(--color-bg-hover)'}
-                        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                      >
-                        <X size={20} />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Modal body - Image */}
-                  <div
-                    className="flex-1 overflow-auto p-4 flex items-center justify-center"
-                    style={{ background: 'var(--color-bg-tertiary)' }}
-                  >
-                    <img
-                      src={lightboxImage.url}
-                      alt="Image agrandie"
-                      className="max-w-full max-h-full object-contain rounded-lg"
-                      style={{ maxHeight: 'calc(90vh - 80px)' }}
-                    />
-                  </div>
-                </div>
-              </div>
+              <ImageLightbox
+                image={lightboxImage}
+                onClose={() => setLightboxImage(null)}
+              />
             )}
           </div>
         </div>

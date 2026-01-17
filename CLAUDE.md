@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-LLM Client is a React-based chat application that interfaces with the OpenRouter API to provide access to various LLM models. It features streaming responses, conversation management, user profiles with personalized system prompts, customizable theming, **image generation**, **reasoning/thinking display**, **full-featured model selector**, **custom projects (GPT-like contexts)**, and **web search integration**.
+LLM Client is a React-based chat application that interfaces with the OpenRouter API to provide access to various LLM models. It features streaming responses, conversation management, user profiles with personalized system prompts, customizable theming, **image generation**, **multimodal image input**, **reasoning/thinking display**, **full-featured model selector**, **custom projects (GPT-like contexts)**, and **web search integration**.
 
 ## Commands
 
@@ -53,7 +53,7 @@ All application state is centralized in `src/store/useStore.js` using Zustand wi
 
 ### Component Structure
 - `Layout.jsx` - Responsive sidebar layout with mobile support
-- `Chat/` - ChatWindow (message display + streaming + **web search indicator**), ChatMessage (markdown + reasoning + images + **citations**), ChatInput (**web search toggle**)
+- `Chat/` - ChatWindow (message display + streaming + **web search indicator**), ChatMessage (markdown + reasoning + images + **citations** + **user images**), ChatInput (**web search toggle** + **image upload**)
 - `Sidebar/` - Conversation list, ModelSelector (opens modal), **Project selector**, **Web search toggle**
 - `Settings/` - ApiKeyModal, ProfileModal
 - `Projects/` - **ProjectModal** (create/edit projects), **ProjectSelectorModal** (choose project for conversation)
@@ -72,6 +72,20 @@ All application state is centralized in `src/store/useStore.js` using Zustand wi
 - Image grid display with hover overlay
 - Modal viewer with zoom and download functionality
 - Deduplication to prevent duplicate images
+
+#### Multimodal Image Input
+Send images to vision-capable models (GPT-4o, Claude 3.5 Sonnet, Gemini Pro Vision, etc.):
+- **Model detection**: Uses `model.architecture.input_modalities.includes('image')` to show upload button
+- **Upload methods**: Button click or Ctrl+V paste from clipboard
+- **Validation** (`src/utils/imageUtils.js`):
+  - Supported formats: JPEG, PNG, GIF, WebP
+  - Max size: 4MB per image
+  - Max images: 5 per message
+  - Auto-compression for large images (max 2048px)
+- **Preview**: Thumbnail grid with remove buttons before sending
+- **API format**: Multimodal content array `[{ type: "text", text }, { type: "image_url", image_url: { url: "data:..." } }]`
+- **Message storage**: Images stored in `userImages` metadata array
+- **Display**: User images shown in chat history with lightbox zoom
 
 #### Model Selector Modal
 - Full-screen modal with search bar
