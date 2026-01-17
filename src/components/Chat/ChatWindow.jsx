@@ -1,25 +1,32 @@
 import { useEffect, useRef, useMemo, useCallback } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { MessageSquare, Zap, Globe } from 'lucide-react'
+import { MessageSquare, Zap } from 'lucide-react'
 import { ChatMessage } from './ChatMessage'
-import { StreamingMessage } from './StreamingMessage'
+import { StreamingMessageOptimized } from './StreamingMessageOptimized'
 import { ChatInput } from './ChatInput'
 import useStore from '../../store/useStore'
+import { streamingManager, useStreamingState } from '../../store/streamingManager'
 
 export function ChatWindow() {
   const containerRef = useRef(null)
+  const lastScrollTimeRef = useRef(0)
+  const isStreamingRef = useRef(false)
 
-  // Get state from store
+  // Get non-streaming state (doesn't change during streaming)
   const conversations = useStore((state) => state.conversations)
   const activeConversationId = useStore((state) => state.activeConversationId)
-  const isStreaming = useStore((state) => state.isStreaming)
-  const streamingContent = useStore((state) => state.streamingContent)
-  const streamingReasoning = useStore((state) => state.streamingReasoning)
-  const streamingImages = useStore((state) => state.streamingImages)
-  const streamingCitations = useStore((state) => state.streamingCitations)
-  const isWebSearching = useStore((state) => state.isWebSearching)
   const apiKey = useStore((state) => state.apiKey)
   const selectedModel = useStore((state) => state.selectedModel)
+
+  // Get streaming state from the manager (minimal React state)
+  const isStreaming = useStore((state) => state.isStreaming)
+  const isWebSearching = useStore((state) => state.isWebSearching)
+
+  // Get refs from streaming manager for direct DOM updates (NO RE-RENDERS)
+  const { contentRef, reasoningRef, imagesRef, citationsRef } = streamingManager.getRefs()
+
+  // Keep ref in sync with isStreaming for use in callbacks
+  isStreamingRef.current = isStreaming
 
   // Get the active conversation
   const conversation = useMemo(
@@ -38,8 +45,8 @@ export function ChatWindow() {
     }))
   }, [conversation])
 
-  // Check if we have streaming content to show
-  const hasStreamingContent = isStreaming && (streamingContent || streamingReasoning)
+  // Check if we're streaming (content is managed via refs, not React state)
+  const hasStreamingContent = isStreaming
 
   // Virtual list setup
   const virtualizer = useVirtualizer({
@@ -49,18 +56,33 @@ export function ChatWindow() {
     overscan: 3, // Render 3 extra items above/below viewport
   })
 
-  // Scroll to bottom when new messages arrive or during streaming
+  // Scroll to bottom - stable callback that uses ref for streaming check
   const scrollToBottom = useCallback(() => {
+    const now = Date.now()
+    // Throttle scroll updates to max once per 150ms during streaming
+    if (now - lastScrollTimeRef.current < 150 && isStreamingRef.current) {
+      return
+    }
+    lastScrollTimeRef.current = now
+
     if (containerRef.current) {
       containerRef.current.scrollTop = containerRef.current.scrollHeight
     }
-  }, [])
+  }, []) // No dependencies - uses refs
 
+  // Scroll on new messages
   useEffect(() => {
-    // Small delay to allow virtual list to update
     const timer = setTimeout(scrollToBottom, 50)
     return () => clearTimeout(timer)
-  }, [displayMessages.length, hasStreamingContent, scrollToBottom])
+  }, [displayMessages.length, scrollToBottom])
+
+  // Scroll during streaming - only when content changes significantly
+  useEffect(() => {
+    if (hasStreamingContent) {
+      const rafId = requestAnimationFrame(scrollToBottom)
+      return () => cancelAnimationFrame(rafId)
+    }
+  }, [hasStreamingContent, scrollToBottom])
 
   if (!conversation) {
     return (
@@ -186,7 +208,7 @@ export function ChatWindow() {
               )
             })}
 
-            {/* Streaming message - rendered separately for performance */}
+            {/* Streaming message - uses refs for direct DOM updates, NO React re-renders */}
             {hasStreamingContent && (
               <div
                 style={{
@@ -195,77 +217,21 @@ export function ChatWindow() {
                   left: 0,
                   width: '100%',
                   transform: `translateY(${virtualizer.getTotalSize()}px)`,
+                  zIndex: 10,
+                  background: 'var(--color-bg-primary)',
                 }}
               >
-                <StreamingMessage
-                  content={streamingContent}
-                  reasoning={streamingReasoning}
-                  images={streamingImages}
-                  citations={streamingCitations}
+                <StreamingMessageOptimized
+                  contentRef={contentRef}
+                  reasoningRef={reasoningRef}
+                  imagesRef={imagesRef}
+                  citationsRef={citationsRef}
+                  isStreaming={isStreaming}
                 />
               </div>
             )}
 
-            {/* Loading indicator - only show when nothing is being streamed yet */}
-            {isStreaming && !streamingContent && !streamingReasoning && (
-              <div
-                className="py-6"
-                style={{
-                  background: isWebSearching ? 'var(--color-accent-soft)' : 'var(--color-assistant-soft)',
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: '100%',
-                  transform: `translateY(${virtualizer.getTotalSize()}px)`,
-                }}
-              >
-                <div className="max-w-3xl mx-auto px-4 sm:px-6">
-                  <div className="flex gap-4">
-                    <div
-                      className="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center"
-                      style={{
-                        background: isWebSearching
-                          ? 'linear-gradient(135deg, var(--color-accent) 0%, #f97316 100%)'
-                          : 'linear-gradient(135deg, var(--color-assistant) 0%, #10b981 100%)',
-                        boxShadow: isWebSearching
-                          ? '0 0 20px rgba(251, 191, 36, 0.3)'
-                          : '0 0 20px rgba(52, 211, 153, 0.3)'
-                      }}
-                    >
-                      {isWebSearching ? (
-                        <Globe size={18} className="text-black animate-pulse" />
-                      ) : (
-                        <div className="flex gap-1">
-                          <span
-                            className="w-1.5 h-1.5 rounded-full animate-typing"
-                            style={{ background: 'white', animationDelay: '0ms' }}
-                          />
-                          <span
-                            className="w-1.5 h-1.5 rounded-full animate-typing"
-                            style={{ background: 'white', animationDelay: '200ms' }}
-                          />
-                          <span
-                            className="w-1.5 h-1.5 rounded-full animate-typing"
-                            style={{ background: 'white', animationDelay: '400ms' }}
-                          />
-                        </div>
-                      )}
-                    </div>
-                    <div className="pt-2">
-                      <p
-                        className="text-sm font-medium mb-1"
-                        style={{ color: isWebSearching ? 'var(--color-accent)' : 'var(--color-assistant)' }}
-                      >
-                        {isWebSearching ? 'Recherche web' : 'Assistant'}
-                      </p>
-                      <p style={{ color: 'var(--color-text-muted)' }}>
-                        {isWebSearching ? 'Recherche en cours...' : 'Réflexion en cours...'}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
+            {/* Loading indicator removed - StreamingMessageOptimized handles display */}
           </div>
         )}
       </div>

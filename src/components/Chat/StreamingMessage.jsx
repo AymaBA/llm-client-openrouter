@@ -218,8 +218,9 @@ export const StreamingMessage = memo(function StreamingMessage({ content, reason
   const hasReasoning = reasoning && reasoning.length > 0
   const hasCitations = citations && citations.length > 0
 
-  // Throttle markdown rendering to every 150ms for smooth updates without glitching
-  const throttledContent = useThrottledValue(content, 150)
+  // Throttle markdown rendering to every 200ms for smooth updates without glitching
+  // Increased from 150ms to reduce CPU usage during fast streaming
+  const throttledContent = useThrottledValue(content, 200)
 
   return (
     <div

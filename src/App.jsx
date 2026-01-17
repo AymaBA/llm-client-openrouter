@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Layout } from './components/Layout'
 import { Sidebar } from './components/Sidebar/Sidebar'
 import { ChatWindow } from './components/Chat/ChatWindow'
@@ -6,6 +6,7 @@ import { ApiKeyModal } from './components/Settings/ApiKeyModal'
 import { ProfileModal } from './components/Settings/ProfileModal'
 import { ModelSelectorModal } from './components/ModelSelectorModal'
 import { ProjectModal, ProjectSelectorModal } from './components/Projects'
+import { DraftRecoveryModal } from './components/DraftRecoveryModal'
 import useStore from './store/useStore'
 import { useUrlSync } from './hooks/useUrlSync'
 import { useThemeColor } from './hooks/useThemeColor'
@@ -25,12 +26,26 @@ function App() {
   const error = useStore((state) => state.error)
   const clearError = useStore((state) => state.clearError)
   const fetchModels = useStore((state) => state.fetchModels)
+  const checkForDraft = useStore((state) => state.checkForDraft)
+  const recoverDraft = useStore((state) => state.recoverDraft)
+  const dismissDraft = useStore((state) => state.dismissDraft)
+
+  // State for draft recovery modal
+  const [pendingDraft, setPendingDraft] = useState(null)
 
   // Sync URL with active conversation
   useUrlSync()
 
   // Apply custom theme color
   useThemeColor()
+
+  // Check for draft to recover on startup
+  useEffect(() => {
+    const draft = checkForDraft()
+    if (draft && draft.content) {
+      setPendingDraft(draft)
+    }
+  }, [checkForDraft])
 
   // Show API key modal on first launch
   useEffect(() => {
@@ -46,6 +61,16 @@ function App() {
 
   const handleSaveApiKey = (key) => {
     setApiKey(key)
+  }
+
+  const handleRecoverDraft = () => {
+    recoverDraft()
+    setPendingDraft(null)
+  }
+
+  const handleDismissDraft = () => {
+    dismissDraft()
+    setPendingDraft(null)
   }
 
   return (
@@ -107,6 +132,13 @@ function App() {
       <ProjectSelectorModal
         isOpen={showProjectSelectorModal}
         onClose={() => setShowProjectSelectorModal(false)}
+      />
+
+      {/* Draft recovery modal */}
+      <DraftRecoveryModal
+        draft={pendingDraft}
+        onRecover={handleRecoverDraft}
+        onDismiss={handleDismissDraft}
       />
     </>
   )

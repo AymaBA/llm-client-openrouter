@@ -2,11 +2,44 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { v4 as uuidv4 } from 'uuid'
 import { fetchModels, streamChat, generateTitle } from '../services/openrouter'
+import { streamingManager } from './streamingManager'
 
+// ============ DRAFT STORAGE FOR CRASH RECOVERY ============
+// Separate storage for in-progress messages to prevent data loss on crash
+const DRAFT_STORAGE_KEY = 'llm-client-draft'
+
+const saveDraft = (draft) => {
+  try {
+    localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft))
+  } catch (e) {
+    console.warn('Failed to save draft:', e)
+  }
+}
+
+const loadDraft = () => {
+  try {
+    const data = localStorage.getItem(DRAFT_STORAGE_KEY)
+    return data ? JSON.parse(data) : null
+  } catch (e) {
+    console.warn('Failed to load draft:', e)
+    return null
+  }
+}
+
+const clearDraft = () => {
+  try {
+    localStorage.removeItem(DRAFT_STORAGE_KEY)
+  } catch (e) {
+    console.warn('Failed to clear draft:', e)
+  }
+}
+
+// ============ THROTTLED STORAGE ============
 // Throttled storage to prevent excessive localStorage writes during streaming
 const createThrottledStorage = () => {
   let timeout = null
   let pendingValue = null
+  let forceNextWrite = false
 
   return {
     getItem: (name) => {
@@ -15,9 +48,29 @@ const createThrottledStorage = () => {
     },
     setItem: (name, value) => {
       pendingValue = value
+
+      // If force flag is set, write immediately
+      if (forceNextWrite) {
+        if (timeout) {
+          clearTimeout(timeout)
+          timeout = null
+        }
+        try {
+          localStorage.setItem(name, JSON.stringify(pendingValue))
+        } catch (e) {
+          console.warn('Failed to save to localStorage:', e)
+        }
+        forceNextWrite = false
+        return
+      }
+
       if (timeout) clearTimeout(timeout)
       timeout = setTimeout(() => {
-        localStorage.setItem(name, JSON.stringify(pendingValue))
+        try {
+          localStorage.setItem(name, JSON.stringify(pendingValue))
+        } catch (e) {
+          console.warn('Failed to save to localStorage:', e)
+        }
         timeout = null
       }, 1000) // Throttle to max 1 write per second
     },
@@ -25,8 +78,26 @@ const createThrottledStorage = () => {
       if (timeout) clearTimeout(timeout)
       localStorage.removeItem(name)
     },
+    // Force immediate write on next setItem call
+    forceWrite: () => {
+      forceNextWrite = true
+    },
+    // Flush pending write immediately
+    flush: () => {
+      if (timeout && pendingValue) {
+        clearTimeout(timeout)
+        timeout = null
+        try {
+          localStorage.setItem('llm-client-storage', JSON.stringify(pendingValue))
+        } catch (e) {
+          console.warn('Failed to flush localStorage:', e)
+        }
+      }
+    }
   }
 }
+
+const throttledStorage = createThrottledStorage()
 
 // Migrate old localStorage data to new Zustand store
 const migrateOldData = () => {
@@ -353,11 +424,9 @@ const useStore = create(
       },
 
       // ============ CHAT / STREAMING ============
+      // Note: Streaming content is managed by streamingManager (refs) to avoid React re-renders
+      // Only minimal state is kept here for UI indicators
       isStreaming: false,
-      streamingContent: '',
-      streamingReasoning: '',
-      streamingImages: [],
-      streamingCitations: [],
       isWebSearching: false,
       error: null,
       abortController: null,
@@ -448,16 +517,14 @@ const useStore = create(
         ]
 
         const abortController = new AbortController()
+
+        // Start streaming with the manager (bypasses React state during streaming)
+        streamingManager.startStreaming(activeConversationId)
         set({ isStreaming: true, abortController })
 
-        let fullResponse = ''
-        let fullReasoning = ''
-        let allImages = []
-        let allCitations = []
-
-        // Throttle state updates for better performance
-        let lastUpdate = 0
-        const UPDATE_INTERVAL = 50 // ms between state updates
+        // Throttle draft saves (every 3 seconds to avoid performance issues)
+        let lastDraftSave = 0
+        const DRAFT_SAVE_INTERVAL = 3000
 
         try {
           for await (const chunk of streamChat(
@@ -467,65 +534,65 @@ const useStore = create(
             abortController.signal,
             { outputModalities, webSearchEnabled, webSearchMaxResults }
           )) {
+            // Use streamingManager instead of React state - NO RE-RENDERS HERE
             if (chunk.content) {
-              fullResponse += chunk.content
+              streamingManager.addContent(chunk.content)
             }
             if (chunk.reasoning) {
-              fullReasoning += chunk.reasoning
+              streamingManager.addReasoning(chunk.reasoning)
             }
             if (chunk.images) {
-              // Deduplicate images by URL
               for (const img of chunk.images) {
-                if (!allImages.some(existing => existing.url === img.url)) {
-                  allImages.push(img)
-                }
+                streamingManager.addImage(img)
               }
             }
             if (chunk.citations) {
-              // Deduplicate citations by URL
               for (const cite of chunk.citations) {
-                if (!allCitations.some(existing => existing.url === cite.url)) {
-                  allCitations.push(cite)
-                }
+                streamingManager.addCitation(cite)
               }
               // Once we receive citations, web search is complete
               set({ isWebSearching: false })
             }
 
-            // Throttle state updates to avoid excessive re-renders
+            // Save draft periodically for crash recovery (every 3 seconds)
             const now = Date.now()
-            if (now - lastUpdate >= UPDATE_INTERVAL) {
-              set({
-                streamingContent: fullResponse,
-                streamingReasoning: fullReasoning,
-                streamingImages: allImages,
-                streamingCitations: allCitations,
+            const state = streamingManager.getState()
+            if (now - lastDraftSave >= DRAFT_SAVE_INTERVAL && state.content.length > 0) {
+              saveDraft({
+                conversationId: activeConversationId,
+                content: state.content,
+                reasoning: state.reasoning,
+                images: state.images,
+                citations: state.citations,
+                timestamp: now,
+                userMessage: content,
               })
-              lastUpdate = now
+              lastDraftSave = now
             }
           }
 
-          // Final update to ensure we have all content
-          set({
-            streamingContent: fullResponse,
-            streamingReasoning: fullReasoning,
-            streamingImages: allImages,
-            streamingCitations: allCitations,
-            isWebSearching: false,
-          })
+          // End streaming and get final result
+          const result = streamingManager.endStreaming()
 
           // Add assistant message with reasoning, images, and citations
-          get().addMessageWithMeta(activeConversationId, 'assistant', fullResponse, {
-            reasoning: fullReasoning || undefined,
-            images: allImages.length > 0 ? allImages : undefined,
-            citations: allCitations.length > 0 ? allCitations : undefined,
+          get().addMessageWithMeta(activeConversationId, 'assistant', result.content, {
+            reasoning: result.reasoning || undefined,
+            images: result.images.length > 0 ? result.images : undefined,
+            citations: result.citations.length > 0 ? result.citations : undefined,
           })
-          set({ streamingContent: '', streamingReasoning: '', streamingImages: [], streamingCitations: [], isStreaming: false, isWebSearching: false, abortController: null })
+
+          // Clear draft and force immediate save after successful message completion
+          clearDraft()
+          throttledStorage.forceWrite()
+
+          // Reset streaming state
+          streamingManager.reset()
+          set({ isStreaming: false, isWebSearching: false, abortController: null })
 
           // Generate title after first exchange
           if (isFirstMessage) {
             try {
-              const title = await generateTitle(apiKey, content, fullResponse)
+              const title = await generateTitle(apiKey, content, result.content)
               get().updateConversation(activeConversationId, { title })
             } catch {
               get().updateConversation(activeConversationId, {
@@ -533,11 +600,31 @@ const useStore = create(
               })
             }
           }
+
+          // Force another save after title generation
+          throttledStorage.forceWrite()
         } catch (err) {
+          // On error, save the partial response as draft if there's content
+          const state = streamingManager.getState()
+          if (state.content.length > 0) {
+            saveDraft({
+              conversationId: activeConversationId,
+              content: state.content,
+              reasoning: state.reasoning,
+              images: state.images,
+              citations: state.citations,
+              timestamp: Date.now(),
+              userMessage: content,
+              error: err.name !== 'AbortError' ? err.message : 'aborted',
+            })
+          }
+
           if (err.name !== 'AbortError') {
             set({ error: err.message })
           }
-          set({ streamingContent: '', streamingReasoning: '', streamingImages: [], streamingCitations: [], isStreaming: false, isWebSearching: false, abortController: null })
+
+          streamingManager.reset()
+          set({ isStreaming: false, isWebSearching: false, abortController: null })
         }
       },
 
@@ -547,6 +634,54 @@ const useStore = create(
           abortController.abort()
         }
         set({ isStreaming: false, abortController: null })
+      },
+
+      // ============ CRASH RECOVERY ============
+      // Check if there's a draft to recover
+      checkForDraft: () => {
+        return loadDraft()
+      },
+
+      // Recover a draft message (add it to the conversation)
+      recoverDraft: () => {
+        const draft = loadDraft()
+        if (!draft || !draft.conversationId || !draft.content) {
+          clearDraft()
+          return false
+        }
+
+        const { conversations } = get()
+        const conversation = conversations.find(c => c.id === draft.conversationId)
+
+        if (!conversation) {
+          // Conversation no longer exists, clear the draft
+          clearDraft()
+          return false
+        }
+
+        // Add the recovered message
+        get().addMessageWithMeta(draft.conversationId, 'assistant', draft.content, {
+          reasoning: draft.reasoning || undefined,
+          images: draft.images?.length > 0 ? draft.images : undefined,
+          citations: draft.citations?.length > 0 ? draft.citations : undefined,
+          recovered: true, // Mark as recovered
+        })
+
+        // Force immediate save
+        throttledStorage.forceWrite()
+
+        // Clear the draft
+        clearDraft()
+
+        // Set active conversation to the recovered one
+        set({ activeConversationId: draft.conversationId })
+
+        return true
+      },
+
+      // Dismiss/ignore a draft without recovering
+      dismissDraft: () => {
+        clearDraft()
       },
 
       // ============ IMPORT / EXPORT ============
@@ -609,7 +744,7 @@ const useStore = create(
     }),
     {
       name: 'llm-client-storage',
-      storage: createThrottledStorage(),
+      storage: throttledStorage,
       partialize: (state) => ({
         apiKey: state.apiKey,
         selectedModel: state.selectedModel,

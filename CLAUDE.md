@@ -23,6 +23,7 @@ All application state is centralized in `src/store/useStore.js` using Zustand wi
 - Favorite models list
 - **Projects** (custom GPT-like contexts with system prompts and context files)
 - **Web search** (per-conversation toggle, citations tracking)
+- **Crash recovery** (draft auto-save during streaming, recovery on startup)
 - Import/export functionality
 
 ### API Integration
@@ -127,6 +128,39 @@ Similar to OpenAI GPTs or Claude Projects, allows creating custom contexts for c
   - `ProjectSelectorModal` - Choose project for active conversation
   - Sidebar displays current conversation's project with quick access
 - **Data persistence**: Projects are stored in localStorage alongside other app state
+
+#### Crash Recovery & Data Protection
+Prevents data loss during streaming interruptions (browser crash, tab close, etc.):
+- **Draft auto-save**: During streaming, partial responses are saved to `llm-client-draft` localStorage key every 3 seconds
+- **Draft structure**: Contains `conversationId`, `content`, `reasoning`, `images`, `citations`, `timestamp`, `userMessage`
+- **Recovery modal** (`DraftRecoveryModal`): On app startup, checks for drafts and prompts user to recover or dismiss
+- **Force save**: After message completion, forces immediate localStorage write (bypasses throttling)
+- **Error handling**: On streaming errors, saves partial response as draft for potential recovery
+- **Store functions**: `checkForDraft()`, `recoverDraft()`, `dismissDraft()`
+
+#### Performance Optimizations (Zero Re-render Streaming)
+Major streaming architecture redesign to prevent crashes during long responses, inspired by ChatGPT's approach:
+
+**Ref-based Streaming (No React Re-renders)**
+- **StreamingManager** (`src/store/streamingManager.js`): Singleton that manages streaming state using plain JS objects and refs instead of React state
+- During streaming, content is accumulated in `contentRef`, `reasoningRef`, `imagesRef`, `citationsRef`
+- **Zero setState calls** during streaming - no React reconciliation overhead
+- React state is only updated at the END of streaming (when message is complete)
+
+**Direct DOM Updates**
+- **StreamingMessageOptimized** component: Uses `requestAnimationFrame` loop to read refs and update DOM directly
+- Simple markdown-to-HTML converter for fast parsing (no heavy dependencies during streaming)
+- React only re-renders for structural changes (reasoning expand/collapse, citations)
+
+**Key Files**:
+- `src/store/streamingManager.js` - Streaming state manager with pub/sub pattern
+- `src/components/Chat/StreamingMessageOptimized.jsx` - Direct DOM rendering component
+- CSS classes: `.streaming-content`, `.streaming-code-block`, `.streaming-inline-code`, etc.
+
+**Other Optimizations**:
+- **Throttled storage**: localStorage writes throttled to max 1 write per second
+- **Throttled scrolling**: Auto-scroll limited to 150ms intervals
+- **Minimal React state**: Only `isStreaming` and `isWebSearching` in Zustand during streaming
 
 ### Styling
 Uses Tailwind CSS with CSS custom properties for theming. Theme variables are defined in `src/index.css` and dynamically modified by the accent color hook.

@@ -432,3 +432,110 @@
 .spotlight {
   background: radial-gradient(ellipse 80% 50% at 50% -20%, var(--color-accent-soft), transparent);
 }
+
+/* ============================================
+   STREAMING CONTENT STYLES
+   Direct DOM injection styles for optimized streaming
+   ============================================ */
+
+.streaming-content {
+  line-height: 1.7;
+}
+
+.streaming-content .streaming-p {
+  margin-bottom: 1rem;
+  color: var(--color-text-primary);
+}
+
+.streaming-content .streaming-p:last-child {
+  margin-bottom: 0;
+}
+
+.streaming-content .streaming-h1 {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin-top: 1.5rem;
+  margin-bottom: 0.75rem;
+  color: var(--color-text-primary);
+}
+
+.streaming-content .streaming-h2 {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+  color: var(--color-text-primary);
+}
+
+.streaming-content .streaming-h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+  color: var(--color-text-primary);
+}
+
+.streaming-content .streaming-code-block {
+  display: block;
+  margin: 1rem 0;
+  padding: 1rem;
+  background: #1a1a1f;
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+  overflow-x: auto;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--color-text-primary);
+}
+
+.streaming-content .streaming-code-block code {
+  background: none;
+  padding: 0;
+  color: inherit;
+}
+
+.streaming-content .streaming-inline-code {
+  background: var(--color-bg-elevated);
+  color: var(--color-accent);
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.375rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.9em;
+}
+
+.streaming-content .streaming-li {
+  margin-left: 1.5rem;
+  margin-bottom: 0.5rem;
+  list-style-type: disc;
+  color: var(--color-text-primary);
+}
+
+.streaming-content .streaming-li-ordered {
+  margin-left: 1.5rem;
+  margin-bottom: 0.5rem;
+  list-style-type: decimal;
+  color: var(--color-text-primary);
+}
+
+.streaming-content .streaming-link {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.streaming-content .streaming-link:hover {
+  color: var(--color-accent-hover);
+}
+
+.streaming-content strong {
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.streaming-content em {
+  font-style: italic;
+  color: var(--color-text-secondary);
+}
